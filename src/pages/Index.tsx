@@ -6,6 +6,7 @@ import LunchButton from "@/components/LunchButton";
 import BirthdayWidget from "@/components/BirthdayWidget";
 import ServiceStatus from "@/components/ServiceStatus";
 import FaqSection from "@/components/FaqSection";
+import AdminDashboard from "@/components/AdminDashboard";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("principal");
@@ -56,6 +57,12 @@ const Index = () => {
         {activeTab === "faq" && (
           <div className="py-4">
             <FaqSection />
+          </div>
+        )}
+
+        {activeTab === "admin" && (
+          <div className="py-4">
+            <AdminDashboard />
           </div>
         )}
       </main>

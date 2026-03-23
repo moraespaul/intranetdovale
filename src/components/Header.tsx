@@ -12,6 +12,7 @@ const navItems = [
   { id: "informativos", label: "Informativos" },
   { id: "arquivos", label: "Arquivos" },
   { id: "faq", label: "FAQ Técnico" },
+  { id: "admin", label: "Admin" },
 ];
 
 const Header = ({ activeTab, onTabChange }: HeaderProps) => {

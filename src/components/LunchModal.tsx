@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { UtensilsCrossed, ChefHat, Plus, X, Info, Lock, LogOut } from "lucide-react";
+import { UtensilsCrossed, X, Info, Lock, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -36,15 +35,17 @@ const defaultRestaurantes: RestauranteMenu[] = [
 ];
 
 const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
-  const [tab, setTab] = useState<"pedir" | "admin">("pedir");
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().split("T")[0];
+  
+  // Gera a data atual no fuso horário local (YYYY-MM-DD) para evitar falhas de UTC
+  const todayObj = new Date();
+  const today = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, "0")}-${String(todayObj.getDate()).padStart(2, "0")}`;
 
   // --- Auth state ---
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [loggedUser, setLoggedUser] = useState<{ nome: string; usuario: string; token?: string } | null>(null);
+  const [loggedUser, setLoggedUser] = useState<{ nome: string; usuario: string; department: string; email: string; token?: string } | null>(null);
 
   // --- Order state ---
   const [nomeColaborador, setNomeColaborador] = useState("");
@@ -54,24 +55,16 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
   const [acompsSelecionados, setAcompsSelecionados] = useState<string[]>([]);
   const [observacoes, setObservacoes] = useState("");
 
-  // --- Admin state ---
   const [restaurantes, setRestaurantes] = useState<RestauranteMenu[]>(defaultRestaurantes);
-  const [activeAdminRestId, setActiveAdminRestId] = useState<string>("1");
-
-  const [newMistura, setNewMistura] = useState("");
-  const [newAcomp, setNewAcomp] = useState("");
-  const [newTamNome, setNewTamNome] = useState("");
-  const [newTamPreco, setNewTamPreco] = useState("");
 
   const { data: cardapio } = useQuery({
     queryKey: ["cardapio", today],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("cardapio")
-        .select("*")
-        .eq("data", today)
-        .maybeSingle();
-      if (error) throw error;
+      // Busca o cardápio da nova API em Python
+      const response = await fetch(`http://localhost:8000/api/Cardapio?data=${today}`);
+      if (!response.ok) return null;
+      
+      const data = await response.json();
       return data;
     },
   });
@@ -150,9 +143,16 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
         data = { token: rawResponse };
       }
       
-      const nomeUsuario = data.nome || data.name || data.firstname || username;
+      // Acessa as informações do usuário dentro da lista 'informacoesUsuario'
+      const userInfo = data.informacoesUsuario && data.informacoesUsuario.length > 0 
+        ? data.informacoesUsuario[0] 
+        : data;
       
-      setLoggedUser({ nome: nomeUsuario, usuario: username, token: data.token || rawResponse });
+      const nomeUsuario = userInfo.displayname || userInfo.firstname || username;
+      const userDept = userInfo.department || "";
+      const userEmail = userInfo.emailaddress || "";
+      
+      setLoggedUser({ nome: nomeUsuario, usuario: username, department: userDept, email: userEmail, token: data.token || rawResponse });
       setNomeColaborador(nomeUsuario);
       toast.success("Login realizado com sucesso!");
     } catch (error: any) {
@@ -162,24 +162,6 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
       setIsAuthenticating(false);
     }
   };
-
-  const saveCardapio = useMutation({
-    mutationFn: async () => {
-      const payload = {
-        data: today,
-        restaurantes: restaurantes,
-      };
-      const { error } = await supabase
-        .from("cardapio")
-        .upsert(payload as any, { onConflict: "data" });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Cardápio salvo!");
-      queryClient.invalidateQueries({ queryKey: ["cardapio"] });
-    },
-    onError: () => toast.error("Erro ao salvar cardápio"),
-  });
 
   const confirmOrder = useMutation({
     mutationFn: async () => {
@@ -191,18 +173,29 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
       const rest = restaurantes.find((r) => r.id === restauranteEscolhidoId);
       const acompanhamentosFinal = acompsSelecionados.join(" + ");
 
-      const { error } = await supabase.from("pedidos_almoco").insert({
-        nome_colaborador: nomeColaborador.trim(),
-        cardapio_id: cardapio?.id,
-        restaurante: rest?.nome,
-        mistura: misturaEscolhida,
-        tamanho: tamanhoEscolhido,
-        acompanhamento: acompanhamentosFinal || null,
-        observacoes: observacoes || null,
+      // Payload estruturado exatamente com as colunas da sua tabela dbo.SOLICITAR_ALMOCO
+      const payload = {
+        DataCadastro: today,
+        NomeSolicitante: loggedUser?.nome,
+        EmailSolicitante: loggedUser?.email,
+        SetorSolicitante: loggedUser?.department,
+        Mistura: misturaEscolhida,
+        Acompanhamento: acompanhamentosFinal || null,
+        Tamanho: tamanhoEscolhido,
+        Restaurante: rest?.nome,
+        Obs: observacoes || null,
+        StatusPedido: "Pendente"
+      };
+
+      const response = await fetch("http://localhost:8000/api/SolicitarAlmoco", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
       });
-      if (error) {
-        if (error.code === "23505") throw new Error("Você já fez pedido hoje!");
-        throw error;
+      
+      if (!response.ok) {
+        if (response.status === 409) throw new Error("Você já fez pedido hoje!");
+        throw new Error("Erro ao salvar no banco SQL Server");
       }
     },
     onSuccess: () => {
@@ -214,46 +207,6 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     },
     onError: (e: Error) => toast.error(e.message || "Erro ao confirmar pedido"),
   });
-
-  const activeRest = restaurantes.find((r) => r.id === activeAdminRestId) || restaurantes[0];
-
-  const updateActiveRest = (updates: Partial<RestauranteMenu>) => {
-    setRestaurantes((prev) =>
-      prev.map((r) => (r.id === activeAdminRestId ? { ...r, ...updates } : r))
-    );
-  };
-
-  const addMistura = () => {
-    if (newMistura.trim()) {
-      updateActiveRest({ misturas: [...activeRest.misturas, newMistura.trim().toUpperCase()] });
-      setNewMistura("");
-    }
-  };
-
-  const addAcomp = () => {
-    if (newAcomp.trim()) {
-      updateActiveRest({ acompanhamentos: [...activeRest.acompanhamentos, newAcomp.trim().toUpperCase()] });
-      setNewAcomp("");
-    }
-  };
-
-  const addTamanho = () => {
-    if (newTamNome.trim() && newTamPreco.trim()) {
-      updateActiveRest({ tamanhos: [...activeRest.tamanhos, { nome: newTamNome.trim(), preco: newTamPreco.trim() }] });
-      setNewTamNome("");
-      setNewTamPreco("");
-    }
-  };
-
-  const removeMistura = (idx: number) => {
-    updateActiveRest({ misturas: activeRest.misturas.filter((_, i) => i !== idx) });
-  };
-  const removeAcomp = (idx: number) => {
-    updateActiveRest({ acompanhamentos: activeRest.acompanhamentos.filter((_, i) => i !== idx) });
-  };
-  const removeTamanho = (idx: number) => {
-    updateActiveRest({ tamanhos: activeRest.tamanhos.filter((_, i) => i !== idx) });
-  };
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:border-orange focus:outline-none transition-colors";
   const selectClass = "w-full px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:border-orange focus:outline-none transition-colors appearance-none cursor-pointer";
@@ -272,29 +225,6 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
           </DialogDescription>
         </DialogHeader>
 
-        {/* Tabs */}
-        <div className="flex gap-1 bg-secondary rounded-lg p-1">
-          <button
-            onClick={() => setTab("pedir")}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
-              tab === "pedir" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
-            }`}
-          >
-            Fazer Pedido
-          </button>
-          <button
-            onClick={() => setTab("admin")}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
-              tab === "admin" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
-            }`}
-          >
-            <span className="flex items-center justify-center gap-1">
-              <ChefHat className="h-3.5 w-3.5" /> Admin
-            </span>
-          </button>
-        </div>
-
-        {tab === "pedir" ? (
           <div className="space-y-4">
             {!cardapio || !restaurantes.some((r) => r.misturas.length > 0 || r.tamanhos.length > 0) ? (
               <p className="text-muted-foreground text-sm text-center py-4">
@@ -302,28 +232,8 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
               </p>
             ) : (
               <>
-                {/* Restaurante Selector */}
-                <div>
-                  <label className={labelClass}>Escolha o Restaurante</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {restaurantes.filter((r) => r.misturas.length > 0 || r.tamanhos.length > 0).map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => setRestauranteEscolhidoId(r.id)}
-                        className={`px-3 py-2 text-sm font-medium rounded-lg border transition-all ${
-                          restauranteEscolhidoId === r.id
-                            ? "bg-orange/10 border-orange text-orange"
-                            : "bg-background border-input text-foreground hover:bg-secondary"
-                        }`}
-                      >
-                        {r.nome}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {!loggedUser ? (
-                  <div className="space-y-4 py-4 border-t border-border mt-4 animate-fade-in">
+                  <div className="space-y-4 py-2 animate-fade-in">
                     <div className="text-center space-y-2 mb-4">
                       <div className="mx-auto w-10 h-10 bg-orange/10 flex items-center justify-center rounded-full mb-2">
                         <Lock className="h-5 w-5 text-orange" />
@@ -370,6 +280,26 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
 
                     return (
                       <div className="space-y-4 animate-fade-in">
+                        {/* Restaurante Selector */}
+                        <div>
+                          <label className={labelClass}>Escolha o Restaurante</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {restaurantes.filter((r) => r.misturas.length > 0 || r.tamanhos.length > 0).map((r) => (
+                              <button
+                                key={r.id}
+                                onClick={() => setRestauranteEscolhidoId(r.id)}
+                                className={`px-3 py-2 text-sm font-medium rounded-lg border transition-all ${
+                                  restauranteEscolhidoId === r.id
+                                    ? "bg-orange/10 border-orange text-orange"
+                                    : "bg-background border-input text-foreground hover:bg-secondary"
+                                }`}
+                              >
+                                {r.nome}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                       {/* Info banner */}
                       <div className="bg-accent/10 border border-orange/20 rounded-lg p-3">
                         <div className="flex items-start gap-2">
@@ -524,155 +454,6 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
               </>
             )}
           </div>
-        ) : (
-          /* ===== ADMIN TAB ===== */
-          <div className="space-y-5">
-            {/* Tabs dos Restaurantes */}
-            <div className="flex gap-2 bg-secondary/50 p-1 rounded-lg">
-              {restaurantes.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => setActiveAdminRestId(r.id)}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                    activeAdminRestId === r.id ? "bg-orange text-white shadow-sm" : "text-muted-foreground hover:bg-secondary"
-                  }`}
-                >
-                  {r.nome || "Restaurante"}
-                </button>
-              ))}
-            </div>
-
-            {/* Nome do Restaurante */}
-            <div>
-              <label className={labelClass}>Nome do Restaurante</label>
-              <input
-                type="text"
-                value={activeRest.nome}
-                onChange={(e) => updateActiveRest({ nome: e.target.value })}
-                placeholder="Ex: Restaurante do Zé"
-                className={inputClass}
-              />
-            </div>
-
-            {/* Misturas */}
-            <div>
-              <label className={labelClass}>Misturas Disponíveis</label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {activeRest.misturas.map((m, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 bg-secondary text-foreground text-xs px-2 py-1 rounded-md"
-                  >
-                    {m}
-                    <button
-                      onClick={() => removeMistura(i)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newMistura}
-                  onChange={(e) => setNewMistura(e.target.value)}
-                  placeholder="Nova mistura..."
-                  className={`${inputClass} flex-1`}
-                  onKeyDown={(e) => e.key === "Enter" && addMistura()}
-                />
-                <Button variant="outline" size="icon" onClick={addMistura}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Acompanhamentos */}
-            <div>
-              <label className={labelClass}>Acompanhamentos</label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {activeRest.acompanhamentos.map((a, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 bg-secondary text-foreground text-xs px-2 py-1 rounded-md"
-                  >
-                    {a}
-                    <button
-                      onClick={() => removeAcomp(i)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newAcomp}
-                  onChange={(e) => setNewAcomp(e.target.value)}
-                  placeholder="Novo acompanhamento..."
-                  className={`${inputClass} flex-1`}
-                  onKeyDown={(e) => e.key === "Enter" && addAcomp()}
-                />
-                <Button variant="outline" size="icon" onClick={addAcomp}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Tamanhos e preços */}
-            <div>
-              <label className={labelClass}>Tamanhos e Preços</label>
-              <div className="space-y-1.5 mb-2">
-                {activeRest.tamanhos.map((t, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between bg-secondary text-foreground text-xs px-3 py-2 rounded-md"
-                  >
-                    <span>{t.nome} — R${t.preco}</span>
-                    <button
-                      onClick={() => removeTamanho(i)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newTamNome}
-                  onChange={(e) => setNewTamNome(e.target.value)}
-                  placeholder="Nome (ex: Mini)"
-                  className={`${inputClass} flex-1 min-w-[120px]`}
-                />
-                <input
-                  type="text"
-                  value={newTamPreco}
-                  onChange={(e) => setNewTamPreco(e.target.value)}
-                  placeholder="Preço"
-                  className={`${inputClass} w-20 shrink-0`}
-                />
-                <Button variant="outline" size="icon" onClick={addTamanho} className="shrink-0">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <Button
-              variant="navy"
-              className="w-full"
-              size="lg"
-              onClick={() => saveCardapio.mutate()}
-              disabled={saveCardapio.isPending}
-            >
-              {saveCardapio.isPending ? "Salvando..." : "Salvar Cardápio"}
-            </Button>
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   );
