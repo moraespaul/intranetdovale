@@ -14,7 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      cardapio: {
+        Row: {
+          acompanhamento: string
+          created_at: string
+          data: string
+          id: string
+          proteina: string
+          salada: string
+        }
+        Insert: {
+          acompanhamento: string
+          created_at?: string
+          data?: string
+          id?: string
+          proteina: string
+          salada: string
+        }
+        Update: {
+          acompanhamento?: string
+          created_at?: string
+          data?: string
+          id?: string
+          proteina?: string
+          salada?: string
+        }
+        Relationships: []
+      }
+      pedidos_almoco: {
+        Row: {
+          cardapio_id: string | null
+          created_at: string
+          data: string
+          id: string
+          nome_colaborador: string
+        }
+        Insert: {
+          cardapio_id?: string | null
+          created_at?: string
+          data?: string
+          id?: string
+          nome_colaborador: string
+        }
+        Update: {
+          cardapio_id?: string | null
+          created_at?: string
+          data?: string
+          id?: string
+          nome_colaborador?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pedidos_almoco_cardapio_id_fkey"
+            columns: ["cardapio_id"]
+            isOneToOne: false
+            referencedRelation: "cardapio"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ramais: {
+        Row: {
+          created_at: string
+          departamento: string
+          id: string
+          nome: string
+          ramal: string
+        }
+        Insert: {
+          created_at?: string
+          departamento: string
+          id?: string
+          nome: string
+          ramal: string
+        }
+        Update: {
+          created_at?: string
+          departamento?: string
+          id?: string
+          nome?: string
+          ramal?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
