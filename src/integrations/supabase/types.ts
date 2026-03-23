@@ -16,52 +16,64 @@ export type Database = {
     Tables: {
       cardapio: {
         Row: {
-          acompanhamento: string
+          acompanhamentos: string[]
           created_at: string
           data: string
           id: string
-          proteina: string
-          salada: string
+          misturas: string[]
+          tamanhos: Json
         }
         Insert: {
-          acompanhamento: string
+          acompanhamentos?: string[]
           created_at?: string
           data?: string
           id?: string
-          proteina: string
-          salada: string
+          misturas?: string[]
+          tamanhos?: Json
         }
         Update: {
-          acompanhamento?: string
+          acompanhamentos?: string[]
           created_at?: string
           data?: string
           id?: string
-          proteina?: string
-          salada?: string
+          misturas?: string[]
+          tamanhos?: Json
         }
         Relationships: []
       }
       pedidos_almoco: {
         Row: {
+          acompanhamento: string | null
           cardapio_id: string | null
           created_at: string
           data: string
           id: string
+          mistura: string | null
           nome_colaborador: string
+          observacoes: string | null
+          tamanho: string | null
         }
         Insert: {
+          acompanhamento?: string | null
           cardapio_id?: string | null
           created_at?: string
           data?: string
           id?: string
+          mistura?: string | null
           nome_colaborador: string
+          observacoes?: string | null
+          tamanho?: string | null
         }
         Update: {
+          acompanhamento?: string | null
           cardapio_id?: string | null
           created_at?: string
           data?: string
           id?: string
+          mistura?: string | null
           nome_colaborador?: string
+          observacoes?: string | null
+          tamanho?: string | null
         }
         Relationships: [
           {
