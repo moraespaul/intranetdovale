@@ -1,22 +1,54 @@
-import { Phone } from "lucide-react";
+import { Phone, Search } from "lucide-react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 
 const RamaisPanel = () => {
+  const [searchQuery, setSearchQuery] = useState("");
+
   const { data: ramais = [] } = useQuery({
     queryKey: ["ramais"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("ramais")
-        .select("*")
-        .order("departamento")
-        .order("ramal");
-      if (error) throw error;
-      return data;
+      // 1. Substitua pela URL real da sua API
+      const API_URL = "https://api.dovale.com.br/AD/InformacoesDosUsuariosAtivos"; 
+      
+      const response = await fetch(API_URL);
+      if (!response.ok) {
+        throw new Error("Erro ao carregar dados da API do AD");
+      }
+      
+      const rawData = await response.json();
+
+      // 2. Mapeie os dados da sua API para o formato que o painel usa
+      // Substitua `item.setor`, `item.numero_ramal` e `item.nome_completo`
+      // pelos nomes corretos dos campos que vêm na sua API.
+      const mappedData = rawData
+        .filter((item: any) => item.telephonenumber && item.telephonenumber.trim() !== "")
+        .map((item: any, index: number) => ({
+          id: item.id || String(index),
+          departamento: item.department || "Outros", // Campo do departamento/setor
+          ramal: item.telephonenumber,               // Campo do ramal
+          nome: item.name || "Sem Nome",             // Campo do nome do funcionário
+          local: item.escritorio || "Sem Local"
+        }));
+
+      // 3. Ordena por departamento e depois por ramal (já que tiramos a ordenação do Supabase)
+      mappedData.sort((a: any, b: any) => {
+        if (a.departamento === b.departamento) {
+          return a.ramal.localeCompare(b.ramal);
+        }
+        return a.departamento.localeCompare(b.departamento);
+      });
+
+      return mappedData;
     },
   });
 
-  const departamentos = ramais.reduce<Record<string, typeof ramais>>((acc, r) => {
+  const filteredRamais = ramais.filter((r) => {
+    const q = searchQuery.toLowerCase();
+    return r.nome.toLowerCase().includes(q) || r.ramal.includes(q);
+  });
+
+  const departamentos = filteredRamais.reduce<Record<string, typeof ramais>>((acc, r) => {
     if (!acc[r.departamento]) acc[r.departamento] = [];
     acc[r.departamento].push(r);
     return acc;
@@ -35,6 +67,21 @@ const RamaisPanel = () => {
           Ramais
         </h2>
       </div>
+
+      {/* Campo de Pesquisa */}
+      <div className="p-3 border-b border-border bg-background/50">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Buscar ramal ou nome..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 rounded-md border border-input bg-background text-sm focus:border-orange focus:outline-none transition-colors"
+          />
+        </div>
+      </div>
+
       <div className="divide-y divide-border">
         {sortedDepts.map((dept) => (
           <div key={dept}>
@@ -47,10 +94,15 @@ const RamaisPanel = () => {
               {departamentos[dept].map((r) => (
                 <li
                   key={r.id}
-                  className="px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-secondary/50 transition-colors"
+                  className="px-4 py-2.5 text-sm flex items-center justify-between gap-2 hover:bg-secondary/50 transition-colors"
                 >
-                  <span className="font-mono text-orange font-semibold text-xs w-10">{r.ramal}</span>
-                  <span className="text-foreground truncate">{r.nome}</span>
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="font-mono text-orange font-semibold text-xs w-10 shrink-0">{r.ramal}</span>
+                    <span className="text-foreground truncate">{r.nome}</span>
+                  </div>
+                  <span className="text-[10px] bg-background text-muted-foreground border border-border px-2 py-0.5 rounded uppercase tracking-wider shrink-0">
+                    {r.local}
+                  </span>
                 </li>
               ))}
             </ul>

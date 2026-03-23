@@ -10,7 +10,8 @@ const LunchButton = () => {
   const hours = now.getHours();
   const minutes = now.getMinutes();
   const currentMinutes = hours * 60 + minutes;
-  const isAvailable = currentMinutes >= 450 && currentMinutes <= 570; // 07:30 - 09:30
+  const isAvailable = true 
+  // currentMinutes >= 450 && currentMinutes <= 570; // 07:30 - 09:30
 
   return (
     <>

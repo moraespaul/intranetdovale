@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Search, Key } from "lucide-react";
-import { faqData } from "@/data/faq";
+import { Search, Key, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Accordion,
   AccordionContent,
@@ -8,16 +8,60 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+// Como os arquivos estão no XAMPP, acessamos via HTTP.
+// A pasta "htdocs" é a raiz do servidor, logo ela não entra na URL.
+// O navegador exige que sejam usadas barras normais (/).
+const MEDIA_BASE_URL = "http://192.168.10.8/intranet/wp-content/uploads/";
+
 const FaqSection = () => {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
+  // Busca e processa o arquivo CSV dinamicamente
+  const { data: faqData = [], isLoading } = useQuery({
+    queryKey: ["faq-csv"],
+    queryFn: async () => {
+      // O arquivo faq.csv deve ser colocado na raiz da pasta "public" do seu projeto
+      const response = await fetch("/faq.csv");
+      if (!response.ok) throw new Error("Erro ao carregar o arquivo CSV");
+      
+      // Lê como ArrayBuffer e decodifica usando ISO-8859-1 (padrão do Excel/Windows)
+      // Isso resolve o problema de caracteres especiais e acentos (ç, ã, é, etc.)
+      const arrayBuffer = await response.arrayBuffer();
+      const text = new TextDecoder("iso-8859-1").decode(arrayBuffer);
+      
+      // Separa as linhas do arquivo (cobre \r\n do Windows e \n padrão)
+      const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+      
+      // Ignora a linha 0 (cabeçalhos) e converte o restante em objetos
+      return lines.slice(1).map((line) => {
+        // Expressão Regular (Regex) que divide a linha pelo separador ';',
+        // mas IGNORA os ';' que estiverem contidos dentro de aspas duplas ("").
+        const columns = line.split(/;(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(col => 
+          col.replace(/^"(.*)"$/, '$1').trim() // Remove as aspas em volta do texto, se existirem
+        );
+        
+        const [codigo, descricao, funcionalidade, video, fotos] = columns;
+        return {
+          codigo: codigo?.trim() || "",
+          descricao: descricao?.trim() || "",
+          funcionalidade: funcionalidade?.trim() || "",
+          video: video?.trim() || "",
+          fotos: fotos?.trim() || "",
+          categoria: "Produtos", // Como não veio categoria no CSV, fixamos uma padrão.
+        };
+      });
+    },
+  });
+
   const categories = [...new Set(faqData.map((f) => f.categoria))];
 
   const filtered = faqData.filter((item) => {
+    const searchLower = search.toLowerCase();
     const matchesSearch =
-      item.pergunta.toLowerCase().includes(search.toLowerCase()) ||
-      item.resposta.toLowerCase().includes(search.toLowerCase());
+      item.codigo.toLowerCase().includes(searchLower) ||
+      item.descricao.toLowerCase().includes(searchLower) ||
+      item.funcionalidade.toLowerCase().includes(searchLower);
     const matchesCategory = !activeCategory || item.categoria === activeCategory;
     return matchesSearch && matchesCategory;
   });
@@ -74,8 +118,14 @@ const FaqSection = () => {
       </div>
 
       {/* Accordion */}
-      <Accordion type="multiple" className="space-y-2">
-        {filtered.map((item, index) => (
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-10 space-y-3">
+          <Loader2 className="h-8 w-8 animate-spin text-orange" />
+          <p className="text-sm text-muted-foreground">Carregando perguntas...</p>
+        </div>
+      ) : (
+        <Accordion type="multiple" className="space-y-2">
+          {filtered.map((item, index) => (
           <AccordionItem
             key={index}
             value={`item-${index}`}
@@ -83,20 +133,58 @@ const FaqSection = () => {
           >
             <AccordionTrigger className="text-sm font-medium text-foreground hover:no-underline px-4 py-4">
               <span className="text-left">
-                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-navy text-primary-foreground mr-2">
-                  {item.categoria}
+                <span className="font-bold text-orange mr-2">
+                  {item.codigo}
                 </span>
-                {item.pergunta}
+                <span className="text-muted-foreground text-xs truncate max-w-[200px] sm:max-w-md hidden sm:inline-block align-middle">
+                  {item.descricao}
+                </span>
               </span>
             </AccordionTrigger>
-            <AccordionContent className="text-sm text-muted-foreground leading-relaxed px-4 pb-4">
-              {item.resposta}
+            <AccordionContent className="text-sm text-muted-foreground leading-relaxed px-4 pb-4 space-y-4">
+              {item.descricao && (
+                <div>
+                  <strong className="text-foreground block mb-1">Descrição:</strong>
+                  <p>{item.descricao}</p>
+                </div>
+              )}
+              
+              {item.funcionalidade && (
+                <div>
+                  <strong className="text-foreground block mb-1">Funcionalidade:</strong>
+                  <p>{item.funcionalidade}</p>
+                </div>
+              )}
+
+              {/* O .replace garante a barra normal (/) e evita barras duplas no começo da string */}
+              {item.fotos && (
+                <div>
+                  <strong className="text-foreground block mb-2">Imagem:</strong>
+                  <img 
+                    src={`${MEDIA_BASE_URL}${item.fotos.replace(/\\/g, "/").replace(/^\/+/, "")}`} 
+                    alt={item.codigo} 
+                    className="max-w-xs md:max-w-md h-auto rounded-lg border border-border object-cover"
+                  />
+                </div>
+              )}
+
+              {item.video && (
+                <div>
+                  <strong className="text-foreground block mb-2">Vídeo:</strong>
+                  <video 
+                    src={`${MEDIA_BASE_URL}${item.video.replace(/\\/g, "/").replace(/^\/+/, "")}`} 
+                    controls 
+                    className="max-w-xs md:max-w-md w-full rounded-lg border border-border bg-black"
+                  />
+                </div>
+              )}
             </AccordionContent>
           </AccordionItem>
         ))}
-      </Accordion>
+        </Accordion>
+      )}
 
-      {filtered.length === 0 && (
+      {!isLoading && filtered.length === 0 && (
         <p className="text-center text-muted-foreground text-sm py-8">
           Nenhum resultado encontrado.
         </p>
