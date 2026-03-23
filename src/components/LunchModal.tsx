@@ -78,11 +78,11 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
         data: today,
         misturas: adminMisturas,
         acompanhamentos: adminAcomps,
-        tamanhos: adminTamanhos as unknown as Record<string, unknown>[],
+        tamanhos: JSON.parse(JSON.stringify(adminTamanhos)),
       };
       const { error } = await supabase
         .from("cardapio")
-        .upsert(payload, { onConflict: "data" });
+        .upsert(payload as any, { onConflict: "data" });
       if (error) throw error;
     },
     onSuccess: () => {
