@@ -43,7 +43,8 @@ class PedidoRequest(BaseModel):
     Tamanho: str
     Restaurante: str
     Obs: Optional[str] = None
-    StatusPedido: str = "Pendente"
+    StatusPedido: str = "Aberto"
+    force: bool = False
 
 # === ROTAS ===
 @app.get("/api/Cardapio")
@@ -65,31 +66,41 @@ def get_cardapio(data: str):
     
     restaurantes_list = []
     try:
-        mistura_val = rows[0][2].strip() if rows[0][2] else ""
-        # Se o texto começar com '[', significa que foi salvo pelo React no formato JSON
-        if mistura_val.startswith("["):
-            restaurantes_list = json.loads(mistura_val)
-        else:
-            # Caso contrário, lê todas as linhas cadastradas manualmente no SQL
-            for i, row_data in enumerate(rows):
-                misturas = [m.strip() for m in row_data[2].split(",") if m.strip()] if row_data[2] else []
-                nome_rest = row_data[3].strip() if row_data[3] else f"Restaurante {i+1}"
-                acomps = [a.strip() for a in row_data[4].split(",") if a.strip()] if row_data[4] else []
-                
-                restaurantes_list.append({
-                    "id": str(row_data[0]),
-                    "nome": nome_rest,
-                    "misturas": misturas,
-                    "acompanhamentos": acomps,
-                    "tamanhos": [{"nome": "Marmita", "preco": "0.00"}] # Padrão já que não há tabela de tamanhos
-                })
+        # Lê todas as linhas separadas do SQL e remonta o formato esperado pelo React
+        for i, row_data in enumerate(rows):
+            mistura_val = row_data[2].strip() if row_data[2] else ""
+            acomps_val = row_data[4].strip() if row_data[4] else ""
+            
+            nome_db = row_data[3].strip() if row_data[3] else f"Restaurante {i+1}"
+            misturas = [m.strip() for m in mistura_val.split(",") if m.strip()] if mistura_val else []
+            acomps = [a.strip() for a in acomps_val.split(",") if a.strip()] if acomps_val else []
+            
+            tamanhos_list = []
+            # Extrai os tamanhos que foram "escondidos" na coluna de restaurante pelo React
+            if "||" in nome_db:
+                nome_rest, tamanhos_str = nome_db.split("||", 1)
+                for t_str in tamanhos_str.split(";"):
+                    if ":" in t_str:
+                        t_nome, t_preco = t_str.split(":", 1)
+                        tamanhos_list.append({"nome": t_nome.strip(), "preco": t_preco.strip()})
+            else:
+                nome_rest = nome_db
+
+            restaurantes_list.append({
+                "id": str(row_data[0]),
+                "nome": nome_rest,
+                "misturas": misturas,
+                "acompanhamentos": acomps,
+                "tamanhos": tamanhos_list
+            })
     except Exception as e:
         print(f"Erro processando cardápio: {e}")
         restaurantes_list = []
 
     return {
         "id": rows[0][0],
-        "data": rows[0][1],
+        # Garante que a data enviada ao React seja um texto (ex: '2023-10-25') e não um objeto Date do Python
+        "data": str(rows[0][1]) if rows[0][1] else data,
         "restaurantes": restaurantes_list
     }
 
@@ -98,17 +109,30 @@ def save_cardapio(payload: CardapioRequest):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        restaurantes_str = json.dumps(payload.restaurantes)
         safe_date = payload.data.replace("-", "")
 
-        cursor.execute("SELECT id FROM dbo.CARDAPIO WHERE DataCadastro = ?", (safe_date,))
-        row = cursor.fetchone()
-
-        if row:
-            cursor.execute("UPDATE dbo.CARDAPIO SET Mistura = ? WHERE DataCadastro = ?", (restaurantes_str, safe_date))
-        else:
-            cursor.execute("INSERT INTO dbo.CARDAPIO (DataCadastro, Restaurante, Mistura, Acompanhamento) VALUES (?, ?, ?, ?)", 
-                           (safe_date, "Vários", restaurantes_str, ""))
+        # Exclui o cardápio antigo da data para inserir os restaurantes separadamente
+        cursor.execute("DELETE FROM dbo.CARDAPIO WHERE CAST(DataCadastro AS DATE) = CAST(? AS DATE)", (safe_date,))
+        
+        # Separa o JSON do React e salva nas colunas corretas (Restaurante, Mistura, Acompanhamento)
+        for rest in payload.restaurantes:
+            # "Esconde" os tamanhos dentro da string de restaurante para salvar no SQL sem precisar de nova coluna
+            nome_rest_base = str(rest.get("nome", "Restaurante")).replace("||", "")
+            tamanhos = rest.get("tamanhos", [])
+            tamanhos_str = ";".join([f"{t.get('nome', '')}:{t.get('preco', '')}" for t in tamanhos])
+            
+            if tamanhos_str:
+                nome_rest = f"{nome_rest_base}||{tamanhos_str}"[:200]
+            else:
+                nome_rest = nome_rest_base[:200]
+                
+            misturas_str = ", ".join(rest.get("misturas", []))[:1000]
+            acomps_str = ", ".join(rest.get("acompanhamentos", []))[:1000]
+            
+            cursor.execute("""
+                INSERT INTO dbo.CARDAPIO (DataCadastro, Restaurante, Mistura, Acompanhamento) 
+                VALUES (?, ?, ?, ?)
+            """, (safe_date, nome_rest, misturas_str, acomps_str))
         
         conn.commit()
         conn.close()
@@ -154,27 +178,43 @@ def save_pedido(payload: PedidoRequest):
         cursor = conn.cursor()
         safe_date = payload.DataCadastro.replace("-", "")
 
-        cursor.execute("SELECT Id FROM dbo.SOLICITAR_ALMOCO WHERE CAST(DataCadastro AS DATE) = CAST(? AS DATE) AND NomeSolicitante = ?", 
-                       (safe_date, payload.NomeSolicitante))
-        if cursor.fetchone():
-            conn.close()
-            raise HTTPException(status_code=409, detail="Você já fez pedido hoje!")
+        if not payload.force:
+            cursor.execute("SELECT Id FROM dbo.SOLICITAR_ALMOCO WHERE CAST(DataCadastro AS DATE) = CAST(? AS DATE) AND NomeSolicitante = ?", 
+                           (safe_date, payload.NomeSolicitante))
+            if cursor.fetchone():
+                conn.close()
+                raise HTTPException(status_code=409, detail="Você já fez pedido hoje!")
 
         # Captura a data e hora exata do servidor
-        data_hora_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Formato universal contínuo do SQL Server (YYYYMMDD HH:MM:SS) para evitar erros de idioma
+        data_hora_atual = datetime.datetime.now().strftime("%Y%m%d %H:%M:%S")
+
+        # Prevenção rigorosa: Substitui Nulos por textos vazios ("") e limita o tamanho 
+        # para garantir que o SQL Server não bloqueie a inserção (Erro de NOT NULL ou Truncation)
+        p_nome = str(payload.NomeSolicitante or "")[:200]
+        p_email = str(payload.EmailSolicitante or "")[:200]
+        p_setor = str(payload.SetorSolicitante or "")[:100]
+        p_mistura = str(payload.Mistura or "")[:1000]
+        p_acomp = str(payload.Acompanhamento or "")[:1000]
+        p_tamanho = str(payload.Tamanho or "")[:100]
+        p_rest = str(payload.Restaurante or "")[:200]
+        p_obs = str(payload.Obs or "")[:1000]
+        p_status = str(payload.StatusPedido or "Aberto")[:50]
 
         cursor.execute("""
             INSERT INTO dbo.SOLICITAR_ALMOCO 
             (DataCadastro, NomeSolicitante, EmailSolicitante, SetorSolicitante, Mistura, Acompanhamento, Tamanho, Restaurante, Obs, StatusPedido)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            data_hora_atual, payload.NomeSolicitante, payload.EmailSolicitante, payload.SetorSolicitante,
-            payload.Mistura, payload.Acompanhamento, payload.Tamanho, payload.Restaurante, payload.Obs, payload.StatusPedido
+            data_hora_atual, p_nome, p_email, p_setor,
+            p_mistura, p_acomp, p_tamanho, p_rest, p_obs, p_status
         ))
 
         conn.commit()
         conn.close()
         return {"message": "Pedido inserido com sucesso"}
+    except HTTPException:
+        raise # Garante que os erros HTTP controlados (como o 409) cheguem ao React
     except Exception as e:
         print(f"Erro de conexão/SQL (POST SolicitarAlmoco): {e}")
         raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { UtensilsCrossed, X, Info, Lock, LogOut } from "lucide-react";
+import { UtensilsCrossed, X, Info, Lock, LogOut, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -54,6 +54,8 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
   const [tamanhoEscolhido, setTamanhoEscolhido] = useState("");
   const [acompsSelecionados, setAcompsSelecionados] = useState<string[]>([]);
   const [observacoes, setObservacoes] = useState("");
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
   const [restaurantes, setRestaurantes] = useState<RestauranteMenu[]>(defaultRestaurantes);
 
@@ -69,11 +71,24 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     },
   });
 
+  // Limpa o login e dados sempre que o modal principal for fechado
+  useEffect(() => {
+    if (!open) {
+      setLoggedUser(null);
+      setPassword("");
+      setNomeColaborador("");
+      setAcompsSelecionados([]);
+      setObservacoes("");
+      setShowConfirmPopup(false);
+      setShowSuccessPopup(false);
+    }
+  }, [open]);
+
   useEffect(() => {
     if (cardapio) {
       if (cardapio.restaurantes) {
         setRestaurantes(cardapio.restaurantes);
-        const firstAvailable = cardapio.restaurantes.find((r: RestauranteMenu) => r.misturas.length > 0 || r.tamanhos.length > 0);
+        const firstAvailable = cardapio.restaurantes.find((r: RestauranteMenu) => r.misturas.length > 0);
         if (firstAvailable && !restauranteEscolhidoId) {
           setRestauranteEscolhidoId(firstAvailable.id);
         }
@@ -84,7 +99,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
           nome: "Restaurante Padrão",
           misturas: cardapio.misturas || [],
           acompanhamentos: cardapio.acompanhamentos || [],
-          tamanhos: (cardapio.tamanhos as unknown as Tamanho[]) || [],
+          tamanhos: cardapio.tamanhos || [],
         };
         setRestaurantes([legacyRest, defaultRestaurantes[1]]);
         if (!restauranteEscolhidoId) setRestauranteEscolhidoId("1");
@@ -98,7 +113,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
       if (!rest.misturas.includes(misturaEscolhida)) {
         setMisturaEscolhida(rest.misturas[0] || "");
       }
-      if (!rest.tamanhos.some(t => t.nome === tamanhoEscolhido)) {
+      if (rest.tamanhos && !rest.tamanhos.some(t => t.nome === tamanhoEscolhido)) {
         setTamanhoEscolhido(rest.tamanhos[0]?.nome || "");
       }
       setAcompsSelecionados(prev => {
@@ -164,7 +179,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
   };
 
   const confirmOrder = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (isForce: boolean = false) => {
       if (!nomeColaborador.trim()) throw new Error("Informe seu nome");
       if (!restauranteEscolhidoId) throw new Error("Selecione um restaurante");
       if (!misturaEscolhida) throw new Error("Selecione uma mistura");
@@ -176,15 +191,16 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
       // Payload estruturado exatamente com as colunas da sua tabela dbo.SOLICITAR_ALMOCO
       const payload = {
         DataCadastro: today,
-        NomeSolicitante: loggedUser?.nome,
-        EmailSolicitante: loggedUser?.email,
-        SetorSolicitante: loggedUser?.department,
-        Mistura: misturaEscolhida,
-        Acompanhamento: acompanhamentosFinal || null,
-        Tamanho: tamanhoEscolhido,
-        Restaurante: rest?.nome,
-        Obs: observacoes || null,
-        StatusPedido: "Pendente"
+        NomeSolicitante: loggedUser?.nome || "",
+        EmailSolicitante: loggedUser?.email || "",
+        SetorSolicitante: loggedUser?.department || "",
+        Mistura: misturaEscolhida || "",
+        Acompanhamento: acompanhamentosFinal || "",
+        Tamanho: tamanhoEscolhido || "",
+        Restaurante: rest?.nome || "",
+        Obs: observacoes || "",
+        StatusPedido: "Aberto",
+        force: isForce
       };
 
       const response = await fetch("http://localhost:8000/api/SolicitarAlmoco", {
@@ -193,19 +209,30 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
         body: JSON.stringify(payload)
       });
       
+      if (response.status === 409 && !isForce) {
+        throw new Error("NEEDS_CONFIRMATION");
+      }
+
       if (!response.ok) {
-        if (response.status === 409) throw new Error("Você já fez pedido hoje!");
         throw new Error("Erro ao salvar no banco SQL Server");
       }
     },
     onSuccess: () => {
-      toast.success("Pedido confirmado!");
-      setNomeColaborador("");
       setAcompsSelecionados([]);
       setObservacoes("");
-      setTimeout(() => onOpenChange(false), 1500);
+      setShowConfirmPopup(false);
+      setShowSuccessPopup(true);
+      setTimeout(() => {
+        setShowSuccessPopup(false);
+      }, 2000);
     },
-    onError: (e: Error) => toast.error(e.message || "Erro ao confirmar pedido"),
+    onError: (e: Error) => {
+      if (e.message === "NEEDS_CONFIRMATION") {
+        setShowConfirmPopup(true);
+      } else {
+        toast.error(e.message || "Erro ao confirmar pedido");
+      }
+    },
   });
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:border-orange focus:outline-none transition-colors";
@@ -213,6 +240,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
   const labelClass = "text-xs font-semibold text-foreground uppercase block mb-1.5";
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -226,7 +254,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
         </DialogHeader>
 
           <div className="space-y-4">
-            {!cardapio || !restaurantes.some((r) => r.misturas.length > 0 || r.tamanhos.length > 0) ? (
+            {!cardapio || !restaurantes.some((r) => r.misturas.length > 0) ? (
               <p className="text-muted-foreground text-sm text-center py-4">
                 Cardápio ainda não cadastrado para hoje.
               </p>
@@ -284,7 +312,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                         <div>
                           <label className={labelClass}>Escolha o Restaurante</label>
                           <div className="grid grid-cols-2 gap-2">
-                            {restaurantes.filter((r) => r.misturas.length > 0 || r.tamanhos.length > 0).map((r) => (
+                            {restaurantes.filter((r) => r.misturas.length > 0).map((r) => (
                               <button
                                 key={r.id}
                                 onClick={() => setRestauranteEscolhidoId(r.id)}
@@ -316,7 +344,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                             </p>
                             <p className="font-semibold">
                               PREÇO:{" "}
-                              {selectedRest.tamanhos.map((t) => `${t.nome} R$${t.preco}`).join(" | ")}
+                              {(selectedRest.tamanhos || []).map((t) => `${t.nome} R$${t.preco}`).join(" | ")}
                             </p>
                           </div>
                         </div>
@@ -369,7 +397,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                       className={selectClass}
                     >
                       <option value="">Selecione...</option>
-                      {selectedRest.tamanhos.map((t) => (
+                      {(selectedRest.tamanhos || []).map((t) => (
                         <option key={t.nome} value={t.nome}>
                           {t.nome} - R${t.preco}
                         </option>
@@ -442,7 +470,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                   variant="accent"
                   className="w-full"
                   size="lg"
-                  onClick={() => confirmOrder.mutate()}
+                  onClick={() => confirmOrder.mutate(false)}
                   disabled={confirmOrder.isPending || !nomeColaborador.trim()}
                 >
                   {confirmOrder.isPending ? "Enviando..." : "Enviar Pedido"}
@@ -456,6 +484,51 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
           </div>
       </DialogContent>
     </Dialog>
+
+      {/* Popup de Confirmação do 2º Pedido */}
+      <Dialog open={showConfirmPopup} onOpenChange={setShowConfirmPopup}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-orange flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              Aviso de Duplicidade
+            </DialogTitle>
+            <DialogDescription className="text-base text-foreground mt-4 leading-relaxed">
+              Você já solicitou uma marmita hoje!
+              <br /><br />
+              Deseja realmente fazer um segundo pedido em seu nome?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end mt-6">
+            <Button variant="outline" onClick={() => setShowConfirmPopup(false)}>
+              Não, cancelar
+            </Button>
+            <Button 
+              variant="accent" 
+              onClick={() => confirmOrder.mutate(true)}
+              disabled={confirmOrder.isPending}
+            >
+              {confirmOrder.isPending ? "Enviando..." : "Sim, pedir outra"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Popup de Sucesso */}
+      <Dialog open={showSuccessPopup} onOpenChange={setShowSuccessPopup}>
+        <DialogContent className="sm:max-w-sm flex flex-col items-center justify-center p-6 text-center [&>button]:hidden">
+          <div className="w-16 h-16 bg-green-100 text-green-600 flex items-center justify-center rounded-full mb-4">
+            <CheckCircle className="h-8 w-8" />
+          </div>
+          <DialogTitle className="text-xl font-bold text-foreground">
+            Pedido Realizado!
+          </DialogTitle>
+          <DialogDescription className="text-base text-muted-foreground mt-2">
+            Seu almoço foi solicitado com sucesso.
+          </DialogDescription>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

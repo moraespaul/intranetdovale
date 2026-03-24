@@ -98,7 +98,7 @@ const AdminDashboard = () => {
   const handleNovoCardapio = () => {
     if (confirm("Deseja limpar as misturas e acompanhamentos para criar um novo cardápio? Os tamanhos e preços serão mantidos.")) {
       setRestaurantes((prev) => prev.map(r => ({ ...r, misturas: [], acompanhamentos: [] })));
-      toast.success("Cardápio limpo. Você já pode adicionar as novas opções.");
+      toast.success("Cardápio limpo.");
     }
   };
 
