@@ -171,6 +171,35 @@ def get_pedidos(data: str):
         print(f"Erro de conexão/SQL (GET SolicitarAlmoco): {e}")
         raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
 
+@app.get("/api/HistoricoPedidos")
+def get_historico_pedidos(usuario: str):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT Id, DataCadastro, NomeSolicitante, EmailSolicitante, SetorSolicitante, 
+                   Mistura, Acompanhamento, Tamanho, Restaurante, Obs, StatusPedido 
+            FROM dbo.SOLICITAR_ALMOCO 
+            WHERE NomeSolicitante = ?
+            ORDER BY DataCadastro DESC
+        """, (usuario,))
+        
+        columns = [column[0] for column in cursor.description]
+        pedidos = []
+        for row in cursor.fetchall():
+            pedido_dict = dict(zip(columns, row))
+            if pedido_dict.get('DataCadastro'):
+                if isinstance(pedido_dict['DataCadastro'], datetime.datetime):
+                    pedido_dict['DataCadastro'] = pedido_dict['DataCadastro'].isoformat()
+                else:
+                    pedido_dict['DataCadastro'] = str(pedido_dict['DataCadastro'])
+            pedidos.append(pedido_dict)
+        conn.close()
+        return pedidos
+    except Exception as e:
+        print(f"Erro de conexão/SQL (GET HistoricoPedidos): {e}")
+        raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
+
 @app.post("/api/SolicitarAlmoco")
 def save_pedido(payload: PedidoRequest):
     try:

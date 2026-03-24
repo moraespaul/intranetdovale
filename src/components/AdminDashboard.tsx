@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { ChefHat, ListOrdered, Newspaper, Plus, X, Lock, LogOut } from "lucide-react";
+import { ChefHat, ListOrdered, Newspaper, Plus, X, Lock, LogOut, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Tamanho {
   nome: string;
@@ -132,6 +134,81 @@ const AdminDashboard = () => {
     acc[rest].push(pedido);
     return acc;
   }, {});
+
+  const handleGeneratePDF = async () => {
+    const todayStr = new Date().toLocaleDateString('pt-BR');
+    
+    for (const [nomeRestaurante, listaPedidos] of Object.entries(pedidosAgrupados) as [string, any[]][]) {
+      const doc = new jsPDF();
+      
+      doc.setFontSize(16);
+      doc.text(`Relatorio de Pedidos - ${nomeRestaurante}`, 14, 15);
+      
+      let yPos = 25;
+
+      doc.setFontSize(14);
+      doc.setTextColor(234, 88, 12); // Cor Laranja
+      doc.text(`Data: ${todayStr} | Total: ${listaPedidos.length} marmita(s)`, 14, yPos);
+      yPos += 5;
+
+      const tableData = listaPedidos.map((p: any) => [
+        p.DataCadastro ? new Date(p.DataCadastro).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : "-",
+        p.NomeSolicitante || p.nome_colaborador || "-",
+        p.Tamanho || p.tamanho || "-",
+        p.Mistura || p.mistura || "-",
+        p.Acompanhamento || p.acompanhamento || "-",
+        p.Obs || p.observacoes || "-"
+      ]);
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Horário', 'Colaborador', 'Tamanho', 'Mistura', 'Acomps', 'Obs']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 41, 59] }, // bg-navy
+        styles: { fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 15 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 40 },
+          4: { cellWidth: 45 },
+          5: { cellWidth: 'auto' }
+        }
+      });
+
+      // Substitui espaços e acentos no nome do arquivo para evitar erros ao baixar
+      const safeName = nomeRestaurante.replace(/[^a-z0-9]/gi, '_');
+      const fileName = `Pedidos_${safeName}_${todayStr.replace(/\//g, '-')}.pdf`;
+
+      try {
+        // Verifica se o navegador suporta a API de escolha de diretório (Chrome, Edge, etc.)
+        if ('showSaveFilePicker' in window) {
+          const showSaveFilePicker = (window as any).showSaveFilePicker;
+          const fileHandle = await showSaveFilePicker({
+            suggestedName: fileName,
+            types: [{
+              description: 'Arquivo PDF',
+              accept: { 'application/pdf': ['.pdf'] },
+            }],
+          });
+          const writable = await fileHandle.createWritable();
+          const blob = doc.output('blob');
+          await writable.write(blob);
+          await writable.close();
+        } else {
+          // Fallback para navegadores que não suportam
+          doc.save(fileName);
+        }
+      } catch (error: any) {
+        // Ignora o erro se o usuário apenas clicar em "Cancelar" na janela do Windows
+        if (error.name !== 'AbortError') {
+          console.error('Erro ao salvar PDF:', error);
+          doc.save(fileName); // Fallback de emergência
+        }
+      }
+    }
+  };
 
   // Função de Login AD Restrita
   const handleLogin = async () => {
@@ -277,7 +354,14 @@ const AdminDashboard = () => {
       {activeTab === "pedidos" && (
         <div className="space-y-6 animate-fade-in">
           <div className="bg-card border border-border rounded-xl p-5 card-shadow">
-            <h2 className="text-lg font-bold mb-4">Pedidos de Hoje ({new Date().toLocaleDateString('pt-BR')})</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Pedidos de Hoje ({new Date().toLocaleDateString('pt-BR')})</h2>
+              {pedidos.length > 0 && (
+                <Button variant="outline" size="sm" onClick={handleGeneratePDF} className="gap-2 border-orange text-orange hover:bg-orange hover:text-white transition-colors">
+                  <Download className="h-4 w-4" /> Gerar PDF
+                </Button>
+              )}
+            </div>
             
             {loadingPedidos ? (
               <p className="text-muted-foreground text-sm">Carregando pedidos...</p>

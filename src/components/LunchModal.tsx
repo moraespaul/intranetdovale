@@ -57,6 +57,11 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
   const [showConfirmPopup, setShowConfirmPopup] = useState(false);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
+  // --- Navigation & History state ---
+  const [activeView, setActiveView] = useState<"pedido" | "historico">("pedido");
+  const [filtroMes, setFiltroMes] = useState("");
+  const [filtroDia, setFiltroDia] = useState("");
+
   const [restaurantes, setRestaurantes] = useState<RestauranteMenu[]>(defaultRestaurantes);
 
   const { data: cardapio } = useQuery({
@@ -71,6 +76,17 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     },
   });
 
+  const { data: historico = [], isLoading: loadingHistorico } = useQuery({
+    queryKey: ["historico_pedidos", loggedUser?.nome],
+    queryFn: async () => {
+      if (!loggedUser?.nome) return [];
+      const response = await fetch(`http://localhost:8000/api/HistoricoPedidos?usuario=${encodeURIComponent(loggedUser.nome)}`);
+      if (!response.ok) return [];
+      return await response.json();
+    },
+    enabled: !!loggedUser?.nome,
+  });
+
   // Limpa o login e dados sempre que o modal principal for fechado
   useEffect(() => {
     if (!open) {
@@ -81,6 +97,9 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
       setObservacoes("");
       setShowConfirmPopup(false);
       setShowSuccessPopup(false);
+      setActiveView("pedido");
+      setFiltroMes("");
+      setFiltroDia("");
     }
   }, [open]);
 
@@ -186,7 +205,10 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
       if (!tamanhoEscolhido) throw new Error("Selecione um tamanho");
 
       const rest = restaurantes.find((r) => r.id === restauranteEscolhidoId);
-      const acompanhamentosFinal = acompsSelecionados.join(" + ");
+      const isSaborDoTiao = rest?.nome.toUpperCase().includes("SABOR DO TIÃO");
+      const acompanhamentosFinal = isSaborDoTiao 
+        ? (rest?.acompanhamentos || []).join(", ") 
+        : acompsSelecionados.join(", ");
 
       // Payload estruturado exatamente com as colunas da sua tabela dbo.SOLICITAR_ALMOCO
       const payload = {
@@ -220,6 +242,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     onSuccess: () => {
       setAcompsSelecionados([]);
       setObservacoes("");
+      queryClient.invalidateQueries({ queryKey: ["historico_pedidos"] });
       setShowConfirmPopup(false);
       setShowSuccessPopup(true);
       setTimeout(() => {
@@ -302,12 +325,39 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                     </Button>
                   </div>
                 ) : (
-                  (() => {
-                    const selectedRest = restaurantes.find((r) => r.id === restauranteEscolhidoId);
-                    if (!selectedRest) return null;
-
-                    return (
                       <div className="space-y-4 animate-fade-in">
+                        {/* Conta Logada (Sempre Visível) */}
+                        <div>
+                          <label className={labelClass}>Conta Logada</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={nomeColaborador}
+                              disabled
+                              className={`${inputClass} bg-muted opacity-70 cursor-not-allowed flex-1`}
+                            />
+                            <Button variant="outline" onClick={() => { setLoggedUser(null); setPassword(""); }} title="Sair" className="shrink-0 px-3">
+                              <LogOut className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Abas Pedido/Histórico */}
+                        <div className="flex gap-2 bg-secondary p-1 rounded-lg">
+                          <button onClick={() => setActiveView("pedido")} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${activeView === "pedido" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary/80"}`}>
+                            Novo Pedido
+                          </button>
+                          <button onClick={() => setActiveView("historico")} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${activeView === "historico" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary/80"}`}>
+                            Meu Histórico
+                          </button>
+                        </div>
+
+                        {activeView === "pedido" ? (
+                          (() => {
+                            const selectedRest = restaurantes.find((r) => r.id === restauranteEscolhidoId);
+                            if (!selectedRest) return null;
+                            return (
+                              <div className="space-y-4 animate-fade-in">
                         {/* Restaurante Selector */}
                         <div>
                           <label className={labelClass}>Escolha o Restaurante</label>
@@ -350,30 +400,6 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                         </div>
                       </div>
 
-                {/* Name */}
-                <div>
-                  <label className={labelClass}>Seu Nome</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={nomeColaborador}
-                      disabled
-                      className={`${inputClass} bg-muted opacity-70 cursor-not-allowed flex-1`}
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setLoggedUser(null);
-                        setPassword(""); // Limpa a senha por segurança
-                      }}
-                      title="Sair"
-                      className="shrink-0 px-3"
-                    >
-                      <LogOut className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </div>
-                </div>
-
                 {/* Mistura + Tamanho */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -407,52 +433,63 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                 </div>
 
                 {/* Acompanhamentos */}
-                <div>
-                  <label className={labelClass}>Acompanhamentos (Máx. 2)</label>
-                  <div className="space-y-2">
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (!val) return;
-                        if (acompsSelecionados.includes(val)) return;
-                        if (acompsSelecionados.length >= 2) {
-                          toast.error("Você pode escolher no máximo 2 acompanhamentos.");
-                          return;
-                        }
-                        setAcompsSelecionados([...acompsSelecionados, val]);
-                      }}
-                      disabled={acompsSelecionados.length >= 2}
-                      className={selectClass}
-                    >
-                      <option value="">
-                        {acompsSelecionados.length >= 2 ? "Limite de 2 atingido" : "Selecione para adicionar..."}
-                      </option>
-                      {selectedRest.acompanhamentos.map((a) => (
-                        <option key={a} value={a} disabled={acompsSelecionados.includes(a)}>
-                          {a}
-                        </option>
-                      ))}
-                    </select>
-
-                    {acompsSelecionados.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {acompsSelecionados.map((a) => (
-                          <span key={a} className="inline-flex items-center gap-1 bg-secondary text-foreground text-xs px-2.5 py-1.5 rounded-md">
-                            {a}
-                            <button
-                              type="button"
-                              onClick={() => setAcompsSelecionados(acompsSelecionados.filter(item => item !== a))}
-                              className="text-muted-foreground hover:text-destructive"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                {selectedRest.nome.toUpperCase().includes("SABOR DO TIÃO") ? (
+                  <div>
+                    <label className={labelClass}>Acompanhamentos (Padrão do Restaurante)</label>
+                    <div className="w-full px-3 py-2.5 rounded-lg border border-input bg-muted text-muted-foreground text-sm opacity-80 cursor-not-allowed">
+                      {selectedRest.acompanhamentos.length > 0 
+                        ? selectedRest.acompanhamentos.join(", ") 
+                        : "Nenhum acompanhamento cadastrado"}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <label className={labelClass}>Acompanhamentos (Máx. 2)</label>
+                    <div className="space-y-2">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) return;
+                          if (acompsSelecionados.includes(val)) return;
+                          if (acompsSelecionados.length >= 2) {
+                            toast.error("Você pode escolher no máximo 2 acompanhamentos.");
+                            return;
+                          }
+                          setAcompsSelecionados([...acompsSelecionados, val]);
+                        }}
+                        disabled={acompsSelecionados.length >= 2}
+                        className={selectClass}
+                      >
+                        <option value="">
+                          {acompsSelecionados.length >= 2 ? "Limite de 2 atingido" : "Selecione para adicionar..."}
+                        </option>
+                        {selectedRest.acompanhamentos.map((a) => (
+                          <option key={a} value={a} disabled={acompsSelecionados.includes(a)}>
+                            {a}
+                          </option>
+                        ))}
+                      </select>
+
+                      {acompsSelecionados.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {acompsSelecionados.map((a) => (
+                            <span key={a} className="inline-flex items-center gap-1 bg-secondary text-foreground text-xs px-2.5 py-1.5 rounded-md">
+                              {a}
+                              <button
+                                type="button"
+                                onClick={() => setAcompsSelecionados(acompsSelecionados.filter(item => item !== a))}
+                                className="text-muted-foreground hover:text-destructive"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Observações */}
                 <div>
@@ -475,10 +512,70 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                 >
                   {confirmOrder.isPending ? "Enviando..." : "Enviar Pedido"}
                 </Button>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <div className="space-y-4 animate-fade-in">
+                            {/* Filtros de Histórico */}
+                            <div className="flex gap-2">
+                              <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={selectClass}>
+                                <option value="">Todos os Meses</option>
+                                <option value="1">Janeiro</option>
+                                <option value="2">Fevereiro</option>
+                                <option value="3">Março</option>
+                                <option value="4">Abril</option>
+                                <option value="5">Maio</option>
+                                <option value="6">Junho</option>
+                                <option value="7">Julho</option>
+                                <option value="8">Agosto</option>
+                                <option value="9">Setembro</option>
+                                <option value="10">Outubro</option>
+                                <option value="11">Novembro</option>
+                                <option value="12">Dezembro</option>
+                              </select>
+                              <input 
+                                type="number" 
+                                placeholder="Dia (1-31)" 
+                                min="1" max="31" 
+                                value={filtroDia} 
+                                onChange={e => setFiltroDia(e.target.value)} 
+                                className={inputClass} 
+                              />
+                            </div>
+                            
+                            {/* Lista de Histórico */}
+                            <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                              {(() => {
+                                const historicoFiltrado = historico.filter((p: any) => {
+                                  if (!p.DataCadastro) return false;
+                                  const d = new Date(p.DataCadastro);
+                                  const mesMatches = filtroMes ? (d.getMonth() + 1).toString() === filtroMes : true;
+                                  const diaMatches = filtroDia ? d.getDate().toString() === filtroDia : true;
+                                  return mesMatches && diaMatches;
+                                });
+
+                                if (loadingHistorico) return <p className="text-sm text-center text-muted-foreground py-4">Carregando histórico...</p>;
+                                if (historicoFiltrado.length === 0) return <p className="text-sm text-center text-muted-foreground py-4">Nenhum pedido encontrado no período.</p>;
+
+                                return historicoFiltrado.map((p: any) => (
+                                  <div key={p.Id || p.id} className="bg-secondary/50 p-4 rounded-lg border border-border text-sm flex flex-col gap-1.5">
+                                    <div className="flex justify-between items-start mb-1">
+                                      <span className="font-bold text-orange text-base">{new Date(p.DataCadastro).toLocaleDateString('pt-BR')}</span>
+                                      <span className="bg-background px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border border-border text-muted-foreground">{p.StatusPedido}</span>
+                                    </div>
+                                    <p><strong className="text-foreground font-medium">Local:</strong> {p.Restaurante}</p>
+                                    <p><strong className="text-foreground font-medium">Pedido:</strong> {p.Tamanho} - {p.Mistura}</p>
+                                    {p.Acompanhamento && <p><strong className="text-foreground font-medium">Acomps:</strong> {p.Acompanhamento}</p>}
+                                    {p.Obs && <p className="text-destructive font-medium mt-1">Obs: {p.Obs}</p>}
+                                  </div>
+                                ));
+                              })()}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    );
-                  })()
-                )}
+                    )}
               </>
             )}
           </div>
