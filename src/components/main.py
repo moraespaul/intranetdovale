@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Form, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -9,13 +9,16 @@ import datetime
 import os
 import uuid
 import base64
+import tempfile
+import os
+import requests as http_requests
 
 app = FastAPI(title="API Intranet Dovale - Almoço")
 
 # Configuração de CORS para permitir que o React converse com esta API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Em produção, coloque o IP do seu React ex: ["http://192.168.0.x"]
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +37,15 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # === DADOS DE CONEXÃO COM O SQL SERVER ===
 # Substitua com os dados reais do seu banco
+WHATSAPP_TOKEN = "EAA9L0ZBKhUj0BQvpSsI3YoZBZB7sedh8P9PXOcwqz21qKcUrK9NpUPNJQ82JtXKqXSa62fGTwnRrCnNRYDOBV5l7YjZC9mXMj1hZBn3ktFnfBZB5wBkLFWleNGnkrIJuHiLUMhks6ZA5EEd0PXGxfJy0k25CQMSX8BPoDnIbCea00PDteAot9mC023bpmnWUwZDZD"           # Token de acesso permanente do Meta
+WHATSAPP_PHONE_NUMBER_ID = "880579608482362"  
+WHATSAPP_DESTINATARIOS = {
+    "Restaurante Sabores do Tiao": "5512981898755",
+    "Restaurante Moria": "5512988467809",
+    "DEMOCRATAS": "5512981898755",
+    "SABOR DO AMOR": "5512988467809",
+}
+
 SERVER = '192.168.10.13'
 DATABASE = 'SOLICITAR_ALMOCO'
 USERNAME = 'sa'
@@ -266,7 +278,7 @@ def save_pedido(payload: PedidoRequest):
         conn.close()
         return {"message": "Pedido inserido com sucesso"}
     except HTTPException:
-        raise # Garante que os erros HTTP controlados (como o 409) cheguem ao React
+        raise
     except Exception as e:
         print(f"Erro de conexão/SQL (POST SolicitarAlmoco): {e}")
         raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
@@ -341,3 +353,95 @@ def save_noticia(payload: NoticiaRequest):
     except Exception as e:
         print(f"Erro ao salvar notícia local: {e}")
         raise HTTPException(status_code=500, detail=f"Erro ao salvar arquivo: {str(e)}")
+
+@app.get("/api/WhatsAppRestaurantes")
+def get_whatsapp_restaurantes():
+    return {"restaurantes": list(WHATSAPP_DESTINATARIOS.keys())}
+
+@app.post("/api/EnviarWhatsApp")
+async def enviar_whatsapp_pdf(
+    pdf: UploadFile = File(...),
+    restaurante: str = Form(...),
+    data: str = Form(...)
+):
+    """
+    Recebe o PDF gerado pelo frontend, faz upload na Meta e envia
+    via WhatsApp usando o template 'marmitaria' (Utilidade).
+    """
+    try:
+        destinatario = WHATSAPP_DESTINATARIOS.get(restaurante)
+        if not destinatario:
+            raise HTTPException(status_code=400, detail=f"Número de WhatsApp não configurado para o restaurante '{restaurante}'. Adicione-o em WHATSAPP_DESTINATARIOS no main.py.")
+
+        pdf_content = await pdf.read()
+
+        # Salva o PDF em arquivo temporário para fazer o upload
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(pdf_content)
+            tmp_path = tmp.name
+
+        try:
+            # 1. Upload do PDF para a Meta (WhatsApp Media API)
+            with open(tmp_path, "rb") as f:
+                upload_resp = http_requests.post(
+                    f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/media",
+                    headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
+                    files={"file": (pdf.filename, f, "application/pdf")},
+                    data={"messaging_product": "whatsapp", "type": "application/pdf"}
+                )
+
+            if not upload_resp.ok:
+                print(f"Erro upload Meta: {upload_resp.text}")
+                raise HTTPException(status_code=500, detail=f"Erro ao fazer upload do PDF na Meta: {upload_resp.text}")
+
+            media_id = upload_resp.json().get("id")
+            if not media_id:
+                raise HTTPException(status_code=500, detail="Meta não retornou o media_id do PDF")
+
+            # 2. Envia mensagem usando o template 'marmitaria' (sem variáveis no body)
+            msg_resp = http_requests.post(
+                f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/messages",
+                headers={
+                    "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "messaging_product": "whatsapp",
+                    "to": destinatario,
+                    "type": "template",
+                    "template": {
+                        "name": "marmitaria",
+                        "language": {"code": "pt_BR"},
+                        "components": [
+                            {
+                                "type": "header",
+                                "parameters": [
+                                    {
+                                        "type": "document",
+                                        "document": {
+                                            "id": media_id,
+                                            "filename": f"Pedidos_{restaurante}_{data}.pdf"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            )
+
+            if not msg_resp.ok:
+                print(f"Erro envio WhatsApp: {msg_resp.text}")
+                raise HTTPException(status_code=500, detail=f"Erro ao enviar mensagem WhatsApp: {msg_resp.text}")
+
+            return {"message": f"Pedidos de '{restaurante}' enviados via WhatsApp com sucesso!"}
+
+        finally:
+            os.unlink(tmp_path)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Erro (EnviarWhatsApp): {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

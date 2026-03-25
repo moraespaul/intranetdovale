@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChefHat, ListOrdered, Newspaper, Plus, X, Lock, LogOut, Download } from "lucide-react";
+import { ChefHat, ListOrdered, Newspaper, Plus, X, Lock, LogOut, Download, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -252,6 +252,79 @@ const AdminDashboard = () => {
     }
   };
 
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+
+  const handleSendWhatsApp = async () => {
+    setIsSendingWhatsApp(true);
+    const todayStr = new Date().toLocaleDateString('pt-BR');
+
+    try {
+      for (const [nomeRestaurante, listaPedidos] of Object.entries(pedidosAgrupados) as [string, any[]][]) {
+        const doc = new jsPDF();
+
+        doc.setFontSize(16);
+        doc.text(`Relatorio de Pedidos - ${nomeRestaurante}`, 14, 15);
+
+        let yPos = 25;
+        doc.setFontSize(14);
+        doc.setTextColor(234, 88, 12);
+        doc.text(`Data: ${todayStr} | Total: ${listaPedidos.length} marmita(s)`, 14, yPos);
+        yPos += 5;
+
+        const tableData = listaPedidos.map((p: any) => [
+          p.DataCadastro ? new Date(p.DataCadastro).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : "-",
+          p.NomeSolicitante || p.nome_colaborador || "-",
+          p.Tamanho || p.tamanho || "-",
+          p.Mistura || p.mistura || "-",
+          p.Acompanhamento || p.acompanhamento || "-",
+          p.Obs || p.observacoes || "-"
+        ]);
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Horário', 'Colaborador', 'Tamanho', 'Mistura', 'Acomps', 'Obs']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [30, 41, 59] },
+          styles: { fontSize: 8 },
+          columnStyles: {
+            0: { cellWidth: 15 },
+            1: { cellWidth: 35 },
+            2: { cellWidth: 20 },
+            3: { cellWidth: 40 },
+            4: { cellWidth: 45 },
+            5: { cellWidth: 'auto' }
+          }
+        });
+
+        const safeName = nomeRestaurante.replace(/[^a-z0-9]/gi, '_');
+        const fileName = `Pedidos_${safeName}_${todayStr.replace(/\//g, '-')}.pdf`;
+        const blob = doc.output('blob');
+
+        const formData = new FormData();
+        formData.append('pdf', blob, fileName);
+        formData.append('restaurante', nomeRestaurante);
+        formData.append('data', todayStr);
+
+        const response = await fetch('http://localhost:8000/api/EnviarWhatsApp', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.detail || 'Erro ao enviar via WhatsApp');
+        }
+      }
+
+      toast.success('Pedidos enviados via WhatsApp com sucesso!');
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao enviar via WhatsApp');
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
+  };
+
   // Função de Login AD Restrita
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -399,9 +472,15 @@ const AdminDashboard = () => {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-bold">Pedidos de Hoje ({new Date().toLocaleDateString('pt-BR')})</h2>
               {pedidos.length > 0 && (
-                <Button variant="outline" size="sm" onClick={handleGeneratePDF} className="gap-2 border-orange text-orange hover:bg-orange hover:text-white transition-colors">
-                  <Download className="h-4 w-4" /> Gerar PDF
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleGeneratePDF} className="gap-2 border-orange text-orange hover:bg-orange hover:text-white transition-colors">
+                    <Download className="h-4 w-4" /> Gerar PDF
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleSendWhatsApp} disabled={isSendingWhatsApp} className="gap-2 border-green-600 text-green-600 hover:bg-green-600 hover:text-white transition-colors">
+                    <MessageCircle className="h-4 w-4" />
+                    {isSendingWhatsApp ? "Enviando..." : "Enviar via WhatsApp"}
+                  </Button>
+                </div>
               )}
             </div>
             
