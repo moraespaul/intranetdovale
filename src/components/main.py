@@ -80,6 +80,7 @@ class NoticiaRequest(BaseModel):
     autor: str
     imagem: str
     data_publicacao: Optional[str] = None
+    anexos: Optional[List[Any]] = None
 
 # === ROTAS ===
 @app.get("/api/Cardapio")
@@ -325,6 +326,22 @@ def save_noticia(payload: NoticiaRequest):
             else:
                 caminho_imagem = payload.imagem
                 
+        # Processa e salva os arquivos em anexo
+        anexos_salvos = []
+        if payload.anexos:
+            for anexo in payload.anexos:
+                conteudo = anexo.get("conteudo", "")
+                if conteudo.startswith("data:"):
+                    header, encoded = conteudo.split(",", 1)
+                    safe_nome = anexo.get("nome", "anexo").replace("/", "_").replace("\\", "_")
+                    nome_arquivo = f"{uuid.uuid4().hex}_{safe_nome}"
+                    caminho_fisico = os.path.join(UPLOAD_DIR, nome_arquivo)
+                    with open(caminho_fisico, "wb") as f:
+                        f.write(base64.b64decode(encoded))
+                    anexos_salvos.append({"nome": safe_nome, "url": f"http://localhost:8000/uploads/{nome_arquivo}"})
+                else:
+                    anexos_salvos.append(anexo)
+
         # Lê as notícias antigas se o arquivo existir
         noticias = []
         if os.path.exists(NEWS_FILE):
@@ -337,11 +354,12 @@ def save_noticia(payload: NoticiaRequest):
         # Cria o objeto exato da nova notícia que o React precisa
         nova_noticia = {
             "Id": str(uuid.uuid4()), # Gera um ID único para o React
-            "Titulo": payload.titulo[:200],
-            "Resumo": payload.resumo[:1000],
-            "Autor": payload.autor[:100],
+            "Titulo": payload.titulo,
+            "Resumo": payload.resumo,
+            "Autor": payload.autor,
             "DataPublicacao": data_hora_atual,
-            "Imagem": caminho_imagem
+            "Imagem": caminho_imagem,
+            "Anexos": anexos_salvos
         }
         
         # Adiciona na lista e subscreve o arquivo
@@ -365,8 +383,8 @@ def update_noticia(noticia_id: str, payload: NoticiaRequest):
             
         for noticia in noticias:
             if str(noticia.get("Id")) == noticia_id:
-                noticia["Titulo"] = payload.titulo[:200]
-                noticia["Resumo"] = payload.resumo[:1000]
+                noticia["Titulo"] = payload.titulo
+                noticia["Resumo"] = payload.resumo
                 # Atualiza imagem se for um novo Base64
                 if payload.imagem and payload.imagem.startswith("data:image"):
                     header, encoded = payload.imagem.split(",", 1)
@@ -379,6 +397,22 @@ def update_noticia(noticia_id: str, payload: NoticiaRequest):
                 elif payload.imagem:
                     noticia["Imagem"] = payload.imagem
                 
+                anexos_salvos = []
+                if payload.anexos:
+                    for anexo in payload.anexos:
+                        conteudo = anexo.get("conteudo", "")
+                        if conteudo.startswith("data:"):
+                            header, encoded = conteudo.split(",", 1)
+                            safe_nome = anexo.get("nome", "anexo").replace("/", "_").replace("\\", "_")
+                            nome_arquivo = f"{uuid.uuid4().hex}_{safe_nome}"
+                            caminho_fisico = os.path.join(UPLOAD_DIR, nome_arquivo)
+                            with open(caminho_fisico, "wb") as f:
+                                f.write(base64.b64decode(encoded))
+                            anexos_salvos.append({"nome": safe_nome, "url": f"http://localhost:8000/uploads/{nome_arquivo}"})
+                        else:
+                            anexos_salvos.append(anexo)
+                noticia["Anexos"] = anexos_salvos
+
                 with open(NEWS_FILE, "w", encoding="utf-8") as f:
                     json.dump(noticias, f, ensure_ascii=False, indent=4)
                 return {"message": "Notícia atualizada com sucesso"}

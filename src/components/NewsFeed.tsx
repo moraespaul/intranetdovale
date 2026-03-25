@@ -1,4 +1,4 @@
-import { Calendar, User, Loader2, X } from "lucide-react";
+import { Calendar, User, Loader2, X, Paperclip, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -32,15 +32,16 @@ const NewsFeed = () => {
           className="bg-card rounded-xl card-shadow overflow-hidden hover:card-shadow-hover transition-shadow animate-fade-in"
         >
             {news.Imagem && (
-              <img src={news.Imagem} alt={news.Titulo} className="w-full h-48 object-cover" loading="lazy" />
+              <img src={news.Imagem} alt={news.Titulo} className="w-full h-48 object-contain bg-secondary/30" loading="lazy" />
             )}
           <div className="p-5">
             <h3 className="font-bold text-foreground text-base mb-2 leading-tight">
                 {news.Titulo}
             </h3>
-            <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
-                {news.Resumo}
-            </p>
+            <div 
+              className="text-muted-foreground text-sm mb-4 leading-relaxed line-clamp-3 prose-styles"
+              dangerouslySetInnerHTML={{ __html: news.Resumo }} 
+            />
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
@@ -80,9 +81,27 @@ const NewsFeed = () => {
                 <span className="flex items-center gap-1.5"><User className="h-4 w-4" /> {selectedPost.Autor}</span>
                 <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /> {selectedPost.DataPublicacao}</span>
               </div>
-              <div className="text-foreground leading-relaxed whitespace-pre-wrap">
-                {selectedPost.Resumo}
-              </div>
+              <div 
+                className="prose-styles text-foreground leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: selectedPost.Resumo }} 
+              />
+              
+              {/* Arquivos Anexos */}
+              {selectedPost.Anexos && selectedPost.Anexos.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-border">
+                  <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <Paperclip className="h-5 w-5 text-orange" /> Arquivos Anexados
+                  </h3>
+                  <div className="flex flex-wrap gap-3">
+                    {selectedPost.Anexos.map((anexo: any, idx: number) => (
+                      <a key={idx} href={anexo.url || anexo.conteudo} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-secondary text-sm px-4 py-2.5 rounded-lg hover:bg-secondary/80 hover:shadow-md transition-all border border-border text-foreground font-medium">
+                        <Download className="h-4 w-4 text-orange" />
+                        {anexo.nome}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

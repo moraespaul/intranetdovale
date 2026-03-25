@@ -1,10 +1,19 @@
 import { useState, useEffect } from "react";
-import { ChefHat, ListOrdered, Newspaper, Plus, X, Lock, LogOut, Download, MessageCircle } from "lucide-react";
+import { ChefHat, ListOrdered, Newspaper, Plus, X, Lock, LogOut, Download, MessageCircle, Info, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 interface Tamanho {
   nome: string;
@@ -51,6 +60,11 @@ const AdminDashboard = () => {
   const [tituloNoticia, setTituloNoticia] = useState("");
   const [resumoNoticia, setResumoNoticia] = useState("");
   const [imagemNoticia, setImagemNoticia] = useState("");
+  const [anexosNoticia, setAnexosNoticia] = useState<{nome: string, conteudo: string, url?: string}[]>([]);
+  
+  // --- Estados de Exclusão de Notícia ---
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [postToDeleteId, setPostToDeleteId] = useState<string | null>(null);
 
   // Buscando Cardápio de Hoje
   const { data: cardapio } = useQuery({
@@ -110,8 +124,11 @@ const AdminDashboard = () => {
   // Salvar Notícia
   const saveNoticia = useMutation({
     mutationFn: async () => {
-      if (!tituloNoticia || !resumoNoticia || !imagemNoticia) {
-        throw new Error("Preencha todos os campos e adicione uma imagem de capa.");
+      // Remove tags HTML e espaços para validar se o conteúdo está realmente vazio
+      const isContentEmpty = !resumoNoticia || resumoNoticia.replace(/<[^>]*>/g, '').trim() === '';
+
+      if (!tituloNoticia.trim() || isContentEmpty || !imagemNoticia) {
+        throw new Error("Título, Conteúdo e Imagem de capa são obrigatórios.");
       }
       
       const method = editingPostId ? "PUT" : "POST";
@@ -126,7 +143,8 @@ const AdminDashboard = () => {
           titulo: tituloNoticia,
           resumo: resumoNoticia,
           autor: loggedAdmin?.nome || "Admin",
-          imagem: imagemNoticia
+          imagem: imagemNoticia,
+          anexos: anexosNoticia
         })
       });
       if (!response.ok) throw new Error("Erro ao salvar notícia no servidor.");
@@ -136,6 +154,7 @@ const AdminDashboard = () => {
       setTituloNoticia("");
       setResumoNoticia("");
       setImagemNoticia("");
+      setAnexosNoticia([]);
       setEditingPostId(null);
       queryClient.invalidateQueries({ queryKey: ["noticias"] });
     },
@@ -150,7 +169,11 @@ const AdminDashboard = () => {
     },
     onSuccess: () => {
       toast.success("Notícia excluída com sucesso!");
-      if (editingPostId) cancelEdit();
+      // Se a notícia excluída era a que estava em edição, limpa o formulário
+      if (editingPostId === postToDeleteId) {
+        cancelEdit();
+      }
+      setPostToDeleteId(null);
       queryClient.invalidateQueries({ queryKey: ["noticias"] });
     },
     onError: (e: any) => toast.error(e.message),
@@ -161,14 +184,21 @@ const AdminDashboard = () => {
     setTituloNoticia(n.Titulo || n.titulo);
     setResumoNoticia(n.Resumo || n.resumo);
     setImagemNoticia(n.Imagem || n.imagem || "");
+    setAnexosNoticia(n.Anexos || n.anexos || []);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   
+  const handleDeleteRequest = (id: string) => {
+    setPostToDeleteId(id);
+    setShowDeleteConfirm(true);
+  };
+
   const cancelEdit = () => {
     setEditingPostId(null);
     setTituloNoticia("");
     setResumoNoticia("");
     setImagemNoticia("");
+    setAnexosNoticia([]);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -178,6 +208,22 @@ const AdminDashboard = () => {
       reader.onloadend = () => setImagemNoticia(reader.result as string);
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleAddAnexos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAnexosNoticia(prev => [...prev, { nome: file.name, conteudo: reader.result as string }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = ''; // Reset do input
+  };
+
+  const removeAnexo = (index: number) => {
+    setAnexosNoticia(prev => prev.filter((_, i) => i !== index));
   };
 
   // Helpers do Cardápio
@@ -683,7 +729,9 @@ const AdminDashboard = () => {
               </div>
               <div>
                 <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Resumo / Conteúdo Breve</label>
-                <textarea value={resumoNoticia} onChange={e => setResumoNoticia(e.target.value)} className={`${inputClass} resize-none`} rows={3} placeholder="Digite o corpo da notícia ou resumo..." />
+                <div className="bg-card rounded-lg border border-input quill-container">
+                  <ReactQuill theme="snow" value={resumoNoticia} onChange={setResumoNoticia} placeholder="Digite o conteúdo da notícia..." />
+                </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Imagem de Capa</label>
@@ -695,6 +743,23 @@ const AdminDashboard = () => {
                   </div>
                 )}
               </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground uppercase flex items-center gap-1 mb-1.5">
+                  <Paperclip className="h-3.5 w-3.5" /> Arquivos Anexos (Opcional)
+                </label>
+                <input type="file" multiple onChange={handleAddAnexos} className={`${inputClass} p-1.5 cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-orange/10 file:text-orange hover:file:bg-orange/20`} />
+                {anexosNoticia.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {anexosNoticia.map((anexo, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-secondary text-xs px-2.5 py-1.5 rounded-md border border-border">
+                        <span className="truncate max-w-[200px]">{anexo.nome}</span>
+                        <button onClick={() => removeAnexo(idx)} className="text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2 mt-2">
                 {editingPostId && (
                   <Button variant="outline" className="w-full" onClick={cancelEdit}>Cancelar Edição</Button>
@@ -723,7 +788,7 @@ const AdminDashboard = () => {
                     </div>
                     <div className="flex gap-2 sm:shrink-0">
                       <Button variant="outline" size="sm" onClick={() => handleEditNoticia(n)}>Editar</Button>
-                      <Button variant="destructive" size="sm" onClick={() => { if(confirm("Tem certeza que deseja excluir?")) deleteNoticia.mutate(n.Id); }}>Excluir</Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDeleteRequest(n.Id)}>Excluir</Button>
                     </div>
                   </div>
                 ))
