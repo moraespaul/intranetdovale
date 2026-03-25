@@ -1,6 +1,6 @@
 import { Search, Menu, X } from "lucide-react";
 import { useState } from "react";
-import logo from "@/assets/logo.png";
+import logoBranco from "@/assets/dovalelogobranco.png";
 
 interface HeaderProps {
   activeTab: string;
@@ -21,15 +21,15 @@ const Header = ({ activeTab, onTabChange }: HeaderProps) => {
 
   return (
     <header className="bg-navy sticky top-0 z-50 shadow-lg">
-      <div className="max-w-[1400px] mx-auto px-4">
-        <div className="flex items-center justify-between h-16 gap-4">
+      <div className="max-w-[1450px] mx-auto px-2 sm:px-4">
+        <div className="flex items-center justify-between h-20 gap-3 sm:gap-4">
           {/* Logo */}
-          <div className="flex items-center gap-3 shrink-0">
-            <img src={logo} alt="Dovale Chaves" className="h-10 w-10 object-contain" />
-            <span className="text-primary-foreground font-bold text-lg hidden sm:block tracking-tight">
-              DOVALE CHAVES
-            </span>
-          </div>
+          <button 
+            onClick={() => onTabChange("principal")}
+            className="flex items-center shrink-0 hover:opacity-80 transition-opacity duration-200 cursor-pointer bg-transparent border-none outline-none p-0 sm:-ml-2"
+          >
+            <img src={logoBranco} alt="Logo Dovale Chaves" className="h-16 sm:h-[4.5rem] w-auto object-contain" />
+          </button>
 
           {/* Search */}
           <div className="flex-1 max-w-md hidden md:block">
