@@ -354,6 +354,54 @@ def save_noticia(payload: NoticiaRequest):
         print(f"Erro ao salvar notícia local: {e}")
         raise HTTPException(status_code=500, detail=f"Erro ao salvar arquivo: {str(e)}")
 
+@app.put("/api/Noticias/{noticia_id}")
+def update_noticia(noticia_id: str, payload: NoticiaRequest):
+    try:
+        if not os.path.exists(NEWS_FILE):
+            raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+        
+        with open(NEWS_FILE, "r", encoding="utf-8") as f:
+            noticias = json.load(f)
+            
+        for noticia in noticias:
+            if str(noticia.get("Id")) == noticia_id:
+                noticia["Titulo"] = payload.titulo[:200]
+                noticia["Resumo"] = payload.resumo[:1000]
+                # Atualiza imagem se for um novo Base64
+                if payload.imagem and payload.imagem.startswith("data:image"):
+                    header, encoded = payload.imagem.split(",", 1)
+                    ext = header.split("/")[1].split(";")[0]
+                    nome_arquivo = f"{uuid.uuid4().hex}.{ext}"
+                    caminho_fisico = os.path.join(UPLOAD_DIR, nome_arquivo)
+                    with open(caminho_fisico, "wb") as f:
+                        f.write(base64.b64decode(encoded))
+                    noticia["Imagem"] = f"http://localhost:8000/uploads/{nome_arquivo}"
+                elif payload.imagem:
+                    noticia["Imagem"] = payload.imagem
+                
+                with open(NEWS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(noticias, f, ensure_ascii=False, indent=4)
+                return {"message": "Notícia atualizada com sucesso"}
+        
+        raise HTTPException(status_code=404, detail="Notícia não encontrada.")
+    except Exception as e:
+        print(f"Erro ao atualizar: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/Noticias/{noticia_id}")
+def delete_noticia(noticia_id: str):
+    try:
+        if not os.path.exists(NEWS_FILE):
+            return {"message": "Arquivo não existe."}
+        with open(NEWS_FILE, "r", encoding="utf-8") as f:
+            noticias = json.load(f)
+        noticias_filtradas = [n for n in noticias if str(n.get("Id")) != noticia_id]
+        with open(NEWS_FILE, "w", encoding="utf-8") as f:
+            json.dump(noticias_filtradas, f, ensure_ascii=False, indent=4)
+        return {"message": "Excluído com sucesso"}
+    except Exception as e:
+        print(f"Erro ao excluir: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 @app.get("/api/WhatsAppRestaurantes")
 def get_whatsapp_restaurantes():
     return {"restaurantes": list(WHATSAPP_DESTINATARIOS.keys())}
@@ -444,4 +492,3 @@ async def enviar_whatsapp_pdf(
     except Exception as e:
         print(f"Erro (EnviarWhatsApp): {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

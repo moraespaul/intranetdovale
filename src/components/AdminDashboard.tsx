@@ -47,6 +47,7 @@ const AdminDashboard = () => {
   const [newTamPreco, setNewTamPreco] = useState("");
 
   // --- Estados de Notícias ---
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [tituloNoticia, setTituloNoticia] = useState("");
   const [resumoNoticia, setResumoNoticia] = useState("");
   const [imagemNoticia, setImagemNoticia] = useState("");
@@ -69,6 +70,16 @@ const AdminDashboard = () => {
       if (!response.ok) return [];
       return await response.json();
     },
+  });
+
+  // Buscando Notícias (Para exibir a lista de exclusão/edição)
+  const { data: noticias = [] } = useQuery({
+    queryKey: ["noticias"],
+    queryFn: async () => {
+      const response = await fetch("http://localhost:8000/api/Noticias");
+      if (!response.ok) return [];
+      return await response.json();
+    }
   });
 
   useEffect(() => {
@@ -102,8 +113,14 @@ const AdminDashboard = () => {
       if (!tituloNoticia || !resumoNoticia || !imagemNoticia) {
         throw new Error("Preencha todos os campos e adicione uma imagem de capa.");
       }
-      const response = await fetch("http://localhost:8000/api/Noticias", {
-        method: "POST",
+      
+      const method = editingPostId ? "PUT" : "POST";
+      const url = editingPostId 
+        ? `http://localhost:8000/api/Noticias/${editingPostId}` 
+        : "http://localhost:8000/api/Noticias";
+
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           titulo: tituloNoticia,
@@ -112,17 +129,47 @@ const AdminDashboard = () => {
           imagem: imagemNoticia
         })
       });
-      if (!response.ok) throw new Error("Erro ao publicar notícia no banco de dados.");
+      if (!response.ok) throw new Error("Erro ao salvar notícia no servidor.");
     },
     onSuccess: () => {
-      toast.success("Notícia publicada com sucesso!");
+      toast.success(editingPostId ? "Notícia atualizada com sucesso!" : "Notícia publicada com sucesso!");
       setTituloNoticia("");
       setResumoNoticia("");
       setImagemNoticia("");
+      setEditingPostId(null);
       queryClient.invalidateQueries({ queryKey: ["noticias"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
+
+  // Excluir Notícia
+  const deleteNoticia = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`http://localhost:8000/api/Noticias/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Erro ao excluir a notícia.");
+    },
+    onSuccess: () => {
+      toast.success("Notícia excluída com sucesso!");
+      if (editingPostId) cancelEdit();
+      queryClient.invalidateQueries({ queryKey: ["noticias"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const handleEditNoticia = (n: any) => {
+    setEditingPostId(n.Id || n.id);
+    setTituloNoticia(n.Titulo || n.titulo);
+    setResumoNoticia(n.Resumo || n.resumo);
+    setImagemNoticia(n.Imagem || n.imagem || "");
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  
+  const cancelEdit = () => {
+    setEditingPostId(null);
+    setTituloNoticia("");
+    setResumoNoticia("");
+    setImagemNoticia("");
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -622,34 +669,66 @@ const AdminDashboard = () => {
 
       {/* CONTEÚDO: POSTS / NOTÍCIAS */}
       {activeTab === "posts" && !["RECEPCAO", "RECEPÇÃO"].includes(loggedAdmin.department.toUpperCase()) && (
-        <div className="bg-card border border-border rounded-xl p-5 card-shadow animate-fade-in space-y-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Newspaper className="h-5 w-5 text-orange" />
-            <h2 className="text-lg font-bold">Publicar Nova Notícia</h2>
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-card border border-border rounded-xl p-5 card-shadow space-y-5">
+            <div className="flex items-center gap-2 mb-2">
+              <Newspaper className="h-5 w-5 text-orange" />
+              <h2 className="text-lg font-bold">{editingPostId ? "Editar Notícia" : "Publicar Nova Notícia"}</h2>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Título da Notícia</label>
+                <input type="text" value={tituloNoticia} onChange={e => setTituloNoticia(e.target.value)} className={inputClass} placeholder="Digite o título principal..." />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Resumo / Conteúdo Breve</label>
+                <textarea value={resumoNoticia} onChange={e => setResumoNoticia(e.target.value)} className={`${inputClass} resize-none`} rows={3} placeholder="Digite o corpo da notícia ou resumo..." />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Imagem de Capa</label>
+                <input type="file" accept="image/*" onChange={handleImageUpload} className={`${inputClass} p-1.5 cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-orange/10 file:text-orange hover:file:bg-orange/20`} />
+                {imagemNoticia && (
+                  <div className="mt-3 relative w-full max-w-sm h-48 rounded-lg overflow-hidden border border-border">
+                    <img src={imagemNoticia} alt="Preview" className="w-full h-full object-cover" />
+                    <button onClick={() => setImagemNoticia("")} className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-full text-white hover:bg-black/70 transition-colors"><X className="h-4 w-4" /></button>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 mt-2">
+                {editingPostId && (
+                  <Button variant="outline" className="w-full" onClick={cancelEdit}>Cancelar Edição</Button>
+                )}
+                <Button variant="accent" className="w-full" onClick={() => saveNoticia.mutate()} disabled={saveNoticia.isPending}>
+                  {saveNoticia.isPending ? "Salvando..." : (editingPostId ? "Atualizar Notícia" : "Publicar Notícia")}
+                </Button>
+              </div>
+            </div>
           </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Título da Notícia</label>
-              <input type="text" value={tituloNoticia} onChange={e => setTituloNoticia(e.target.value)} className={inputClass} placeholder="Digite o título principal..." />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Resumo / Conteúdo Breve</label>
-              <textarea value={resumoNoticia} onChange={e => setResumoNoticia(e.target.value)} className={`${inputClass} resize-none`} rows={3} placeholder="Digite o corpo da notícia ou resumo..." />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Imagem de Capa</label>
-              <input type="file" accept="image/*" onChange={handleImageUpload} className={`${inputClass} p-1.5 cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-orange/10 file:text-orange hover:file:bg-orange/20`} />
-              {imagemNoticia && (
-                <div className="mt-3 relative w-full max-w-sm h-48 rounded-lg overflow-hidden border border-border">
-                  <img src={imagemNoticia} alt="Preview" className="w-full h-full object-cover" />
-                  <button onClick={() => setImagemNoticia("")} className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-full text-white hover:bg-black/70 transition-colors"><X className="h-4 w-4" /></button>
-                </div>
+
+          <div className="bg-card border border-border rounded-xl p-5 card-shadow space-y-4">
+            <h2 className="text-lg font-bold">Notícias Publicadas</h2>
+            <div className="space-y-3">
+              {noticias.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma notícia encontrada.</p>
+              ) : (
+                noticias.map((n: any) => (
+                  <div key={n.Id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-secondary/50 p-3 rounded-lg border border-border gap-3">
+                    <div className="flex items-center gap-3">
+                      {n.Imagem && <img src={n.Imagem} alt={n.Titulo} className="w-12 h-12 rounded object-cover" />}
+                      <div>
+                        <h4 className="font-semibold text-sm line-clamp-1">{n.Titulo}</h4>
+                        <p className="text-xs text-muted-foreground">{n.DataPublicacao} - {n.Autor}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 sm:shrink-0">
+                      <Button variant="outline" size="sm" onClick={() => handleEditNoticia(n)}>Editar</Button>
+                      <Button variant="destructive" size="sm" onClick={() => { if(confirm("Tem certeza que deseja excluir?")) deleteNoticia.mutate(n.Id); }}>Excluir</Button>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
-            <Button variant="accent" className="w-full mt-2" onClick={() => saveNoticia.mutate()} disabled={saveNoticia.isPending}>
-              {saveNoticia.isPending ? "Publicando..." : "Publicar Notícia na Intranet"}
-            </Button>
           </div>
         </div>
       )}
