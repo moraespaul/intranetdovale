@@ -46,6 +46,11 @@ const AdminDashboard = () => {
   const [newTamNome, setNewTamNome] = useState("");
   const [newTamPreco, setNewTamPreco] = useState("");
 
+  // --- Estados de Notícias ---
+  const [tituloNoticia, setTituloNoticia] = useState("");
+  const [resumoNoticia, setResumoNoticia] = useState("");
+  const [imagemNoticia, setImagemNoticia] = useState("");
+
   // Buscando Cardápio de Hoje
   const { data: cardapio } = useQuery({
     queryKey: ["cardapio", today],
@@ -90,6 +95,43 @@ const AdminDashboard = () => {
     },
     onError: () => toast.error("Erro ao salvar cardápio"),
   });
+
+  // Salvar Notícia
+  const saveNoticia = useMutation({
+    mutationFn: async () => {
+      if (!tituloNoticia || !resumoNoticia || !imagemNoticia) {
+        throw new Error("Preencha todos os campos e adicione uma imagem de capa.");
+      }
+      const response = await fetch("http://localhost:8000/api/Noticias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: tituloNoticia,
+          resumo: resumoNoticia,
+          autor: loggedAdmin?.nome || "Admin",
+          imagem: imagemNoticia
+        })
+      });
+      if (!response.ok) throw new Error("Erro ao publicar notícia no banco de dados.");
+    },
+    onSuccess: () => {
+      toast.success("Notícia publicada com sucesso!");
+      setTituloNoticia("");
+      setResumoNoticia("");
+      setImagemNoticia("");
+      queryClient.invalidateQueries({ queryKey: ["noticias"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setImagemNoticia(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Helpers do Cardápio
   const activeRest = restaurantes.find((r) => r.id === activeAdminRestId) || restaurantes[0] || defaultRestaurantes[0];
@@ -501,15 +543,35 @@ const AdminDashboard = () => {
 
       {/* CONTEÚDO: POSTS / NOTÍCIAS */}
       {activeTab === "posts" && !["RECEPCAO", "RECEPÇÃO"].includes(loggedAdmin.department.toUpperCase()) && (
-        <div className="bg-card border border-border rounded-xl p-5 card-shadow animate-fade-in text-center py-12 space-y-4">
-          <div className="w-12 h-12 bg-orange/10 flex items-center justify-center rounded-full mx-auto">
-            <Newspaper className="h-6 w-6 text-orange" />
+        <div className="bg-card border border-border rounded-xl p-5 card-shadow animate-fade-in space-y-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Newspaper className="h-5 w-5 text-orange" />
+            <h2 className="text-lg font-bold">Publicar Nova Notícia</h2>
           </div>
-          <h2 className="text-xl font-bold text-foreground">Gerenciador de Notícias</h2>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            A interface para criação de postagens está pronta. Em breve, conectaremos esta tela com a tabela <code className="bg-secondary px-1 py-0.5 rounded text-xs">noticias</code> do banco de dados para publicação em tempo real.
-          </p>
-          <Button variant="outline" disabled>Recurso em Desenvolvimento</Button>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Título da Notícia</label>
+              <input type="text" value={tituloNoticia} onChange={e => setTituloNoticia(e.target.value)} className={inputClass} placeholder="Digite o título principal..." />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Resumo / Conteúdo Breve</label>
+              <textarea value={resumoNoticia} onChange={e => setResumoNoticia(e.target.value)} className={`${inputClass} resize-none`} rows={3} placeholder="Digite o corpo da notícia ou resumo..." />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Imagem de Capa</label>
+              <input type="file" accept="image/*" onChange={handleImageUpload} className={`${inputClass} p-1.5 cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-orange/10 file:text-orange hover:file:bg-orange/20`} />
+              {imagemNoticia && (
+                <div className="mt-3 relative w-full max-w-sm h-48 rounded-lg overflow-hidden border border-border">
+                  <img src={imagemNoticia} alt="Preview" className="w-full h-full object-cover" />
+                  <button onClick={() => setImagemNoticia("")} className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-full text-white hover:bg-black/70 transition-colors"><X className="h-4 w-4" /></button>
+                </div>
+              )}
+            </div>
+            <Button variant="accent" className="w-full mt-2" onClick={() => saveNoticia.mutate()} disabled={saveNoticia.isPending}>
+              {saveNoticia.isPending ? "Publicando..." : "Publicar Notícia na Intranet"}
+            </Button>
+          </div>
         </div>
       )}
         </div>

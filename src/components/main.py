@@ -1,10 +1,14 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional, Any
 import pyodbc
 import json
 import datetime
+import os
+import uuid
+import base64
 
 app = FastAPI(title="API Intranet Dovale - Almoço")
 
@@ -16,6 +20,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# === DIRETÓRIO DE UPLOADS E ARQUIVO LOCAL ===
+UPLOAD_DIR = "uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
+NEWS_FILE = "noticias.json"
+
+# Permite que o frontend acesse a pasta /uploads via URL (ex: http://localhost:8000/uploads/imagem.png)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+
 # === DADOS DE CONEXÃO COM O SQL SERVER ===
 # Substitua com os dados reais do seu banco
 SERVER = '192.168.10.13'
@@ -45,6 +61,13 @@ class PedidoRequest(BaseModel):
     Obs: Optional[str] = None
     StatusPedido: str = "Aberto"
     force: bool = False
+
+class NoticiaRequest(BaseModel):
+    titulo: str
+    resumo: str
+    autor: str
+    imagem: str
+    data_publicacao: Optional[str] = None
 
 # === ROTAS ===
 @app.get("/api/Cardapio")
@@ -247,3 +270,74 @@ def save_pedido(payload: PedidoRequest):
     except Exception as e:
         print(f"Erro de conexão/SQL (POST SolicitarAlmoco): {e}")
         raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
+
+@app.get("/api/Noticias")
+def get_noticias():
+    try:
+        if not os.path.exists(NEWS_FILE):
+            return []
+        
+        with open(NEWS_FILE, "r", encoding="utf-8") as f:
+            noticias = json.load(f)
+            
+        # Retorna a lista invertida para que a postagem mais recente seja a primeira a aparecer
+        return noticias[::-1]
+    except Exception as e:
+        print(f"Erro ao ler arquivo de notícias local: {e}")
+        return []
+
+@app.post("/api/Noticias")
+def save_noticia(payload: NoticiaRequest):
+    try:
+        # Formata a data para aparecer perfeitamente no site (Ex: 25/10/2023)
+        data_hora_atual = datetime.datetime.now().strftime("%d/%m/%Y")
+        
+        caminho_imagem = ""
+        if payload.imagem:
+            # Verifica se a imagem veio em Base64 do React
+            if payload.imagem.startswith("data:image"):
+                # Separa o cabeçalho (data:image/png;base64) do conteúdo real
+                header, encoded = payload.imagem.split(",", 1)
+                ext = header.split("/")[1].split(";")[0]
+                
+                # Gera um nome único para o arquivo para evitar conflito (ex: a1b2c3d4.png)
+                nome_arquivo = f"{uuid.uuid4().hex}.{ext}"
+                caminho_fisico = os.path.join(UPLOAD_DIR, nome_arquivo)
+                
+                # Decodifica e salva o arquivo fisicamente na pasta "uploads"
+                with open(caminho_fisico, "wb") as f:
+                    f.write(base64.b64decode(encoded))
+                
+                # Salva no banco APENAS o link do arquivo para o banco ficar leve
+                caminho_imagem = f"http://localhost:8000/uploads/{nome_arquivo}"
+            else:
+                caminho_imagem = payload.imagem
+                
+        # Lê as notícias antigas se o arquivo existir
+        noticias = []
+        if os.path.exists(NEWS_FILE):
+            with open(NEWS_FILE, "r", encoding="utf-8") as f:
+                try:
+                    noticias = json.load(f)
+                except json.JSONDecodeError:
+                    noticias = []
+                    
+        # Cria o objeto exato da nova notícia que o React precisa
+        nova_noticia = {
+            "Id": str(uuid.uuid4()), # Gera um ID único para o React
+            "Titulo": payload.titulo[:200],
+            "Resumo": payload.resumo[:1000],
+            "Autor": payload.autor[:100],
+            "DataPublicacao": data_hora_atual,
+            "Imagem": caminho_imagem
+        }
+        
+        # Adiciona na lista e subscreve o arquivo
+        noticias.append(nova_noticia)
+        with open(NEWS_FILE, "w", encoding="utf-8") as f:
+            json.dump(noticias, f, ensure_ascii=False, indent=4)
+            
+        return {"message": "Notícia salva com sucesso (Local)"}
+    except Exception as e:
+        print(f"Erro ao salvar notícia local: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar arquivo: {str(e)}")
