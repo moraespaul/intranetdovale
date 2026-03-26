@@ -1,0 +1,38 @@
+# Dependências (reinstaladas no container)
+node_modules/
+.pnp
+.pnp.js
+
+# Build local
+dist/
+build/
+
+# Ambiente local (NÃO enviar .env – configure no Coolify)
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# Testes
+coverage/
+playwright-report/
+test-results/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Supabase local (usa o remoto em produção)
+supabase/.branches/
+supabase/.temp/
