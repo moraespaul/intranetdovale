@@ -40,6 +40,8 @@ const defaultRestaurantes: RestauranteMenu[] = [
   { id: "2", nome: "Restaurante 2", misturas: [], acompanhamentos: [], tamanhos: [] }
 ];
 
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`;
+
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<"cardapio" | "pedidos" | "posts" | "aniversariantes">("pedidos");
   const queryClient = useQueryClient();
@@ -86,7 +88,7 @@ const AdminDashboard = () => {
   const { data: cardapio } = useQuery({
     queryKey: ["cardapio", today],
     queryFn: async () => {
-      const response = await fetch(`/api/Cardapio?data=${today}`);
+      const response = await fetch(`${API_BASE_URL}/api/Cardapio?data=${today}`);
       if (!response.ok) return null;
       return await response.json();
     },
@@ -96,7 +98,7 @@ const AdminDashboard = () => {
   const { data: pedidos = [], isLoading: loadingPedidos } = useQuery({
     queryKey: ["pedidos_almoco", today],
     queryFn: async () => {
-      const response = await fetch(`/api/SolicitarAlmoco?data=${today}`);
+      const response = await fetch(`${API_BASE_URL}/api/SolicitarAlmoco?data=${today}`);
       if (!response.ok) return [];
       return await response.json();
     },
@@ -106,7 +108,7 @@ const AdminDashboard = () => {
   const { data: noticias = [] } = useQuery({
     queryKey: ["noticias"],
     queryFn: async () => {
-      const response = await fetch(`/api/Noticias`);
+      const response = await fetch(`${API_BASE_URL}/api/Noticias`);
       if (!response.ok) return [];
       return await response.json();
     }
@@ -116,7 +118,7 @@ const AdminDashboard = () => {
   const { data: aniversariantes = [], isLoading: loadingAniversariantes } = useQuery<AniversarianteAdmin[]>({
     queryKey: ["aniversariantes_all"],
     queryFn: async () => {
-      const response = await fetch("http://localhost:8000/api/Aniversariantes/all");
+      const response = await fetch(`${API_BASE_URL}/api/Aniversariantes/all`);
       if (!response.ok) return [];
       return await response.json();
     },
@@ -134,7 +136,7 @@ const AdminDashboard = () => {
   // Salvar Cardápio
   const saveCardapio = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/Cardapio`, {
+      const response = await fetch(`${API_BASE_URL}/api/Cardapio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: today, restaurantes })
@@ -160,8 +162,8 @@ const AdminDashboard = () => {
       
       const method = editingPostId ? "PUT" : "POST";
       const url = editingPostId 
-        ? `/api/Noticias/${editingPostId}` 
-        : `/api/Noticias`;
+        ? `${API_BASE_URL}/api/Noticias/${editingPostId}` 
+        : `${API_BASE_URL}/api/Noticias`;
 
       const response = await fetch(url, {
         method,
@@ -191,7 +193,7 @@ const AdminDashboard = () => {
   // Excluir Notícia
   const deleteNoticia = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/Noticias/${id}`, { method: "DELETE" });
+      const response = await fetch(`${API_BASE_URL}/api/Noticias/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Erro ao excluir a notícia.");
     },
     onSuccess: () => {
@@ -215,8 +217,8 @@ const AdminDashboard = () => {
       
       const method = editingAniversarianteId ? "PUT" : "POST";
       const url = editingAniversarianteId 
-        ? `http://localhost:8000/api/Aniversariantes/${editingAniversarianteId}` 
-        : "http://localhost:8000/api/Aniversariantes";
+        ? `${API_BASE_URL}/api/Aniversariantes/${editingAniversarianteId}` 
+        : `${API_BASE_URL}/api/Aniversariantes`;
 
       const response = await fetch(url, {
         method,
@@ -244,7 +246,7 @@ const AdminDashboard = () => {
   // Excluir Aniversariante
   const deleteAniversariante = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`http://localhost:8000/api/Aniversariantes/${id}`, { method: "DELETE" });
+      const response = await fetch(`${API_BASE_URL}/api/Aniversariantes/${id}`, { method: "DELETE" });
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.detail || "Erro ao excluir aniversariante.");
@@ -505,7 +507,7 @@ const AdminDashboard = () => {
         formData.append('restaurante', nomeRestaurante);
         formData.append('data', todayStr);
 
-        const response = await fetch(`/api/EnviarWhatsApp`, {
+        const response = await fetch(`${API_BASE_URL}/api/EnviarWhatsApp`, {
           method: 'POST',
           body: formData,
         });
@@ -901,7 +903,7 @@ const AdminDashboard = () => {
                 noticias.map((n: any) => (
                   <div key={n.Id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-secondary/50 p-3 rounded-lg border border-border gap-3">
                     <div className="flex items-center gap-3">
-                      {n.Imagem && <img src={n.Imagem} alt={n.Titulo} className="w-12 h-12 rounded object-cover" />}
+                      {n.Imagem && <img src={n.Imagem.startsWith('http') ? n.Imagem : `${API_BASE_URL}${n.Imagem}`} alt={n.Titulo} className="w-12 h-12 rounded object-cover" />}
                       <div>
                         <h4 className="font-semibold text-sm line-clamp-1">{n.Titulo}</h4>
                         <p className="text-xs text-muted-foreground">{n.DataPublicacao} - {n.Autor}</p>

@@ -25,11 +25,12 @@ app.add_middleware(
 )
 
 # === DIRETÓRIO DE UPLOADS E ARQUIVO LOCAL ===
-UPLOAD_DIR = "uploads"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-NEWS_FILE = "data/noticias.json"
+NEWS_FILE = os.path.join(BASE_DIR, "noticias.json")
 
 # Permite que o frontend acesse a pasta /uploads via URL (ex: /uploads/imagem.png)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
@@ -51,14 +52,25 @@ DATABASE = 'SOLICITAR_ALMOCO'
 USERNAME = 'sa'
 PASSWORD = 'Elavod@2018@'
 
-connection_string = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}"
+# --- Detecção Automática do Driver ODBC ---
+installed_drivers = pyodbc.drivers()
+if 'ODBC Driver 17 for SQL Server' in installed_drivers:
+    SQL_DRIVER = '{ODBC Driver 17 for SQL Server}'
+elif 'ODBC Driver 18 for SQL Server' in installed_drivers:
+    SQL_DRIVER = '{ODBC Driver 18 for SQL Server}'
+elif 'SQL Server Native Client 11.0' in installed_drivers:
+    SQL_DRIVER = '{SQL Server Native Client 11.0}'
+else:
+    SQL_DRIVER = '{SQL Server Native Client 11.0}' # Fallback de segurança
+
+connection_string = f"DRIVER={SQL_DRIVER};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}"
 
 def get_db_connection():
     return pyodbc.connect(connection_string)
 
 # Conexão específica para o banco da INTRANET
 INTRANET_DB = 'INTRANET'
-intranet_connection_string = f"DRIVER={{SQL Server Native Client 11.0}};SERVER={SERVER};DATABASE={INTRANET_DB};UID={USERNAME};PWD={PASSWORD}"
+intranet_connection_string = f"DRIVER={SQL_DRIVER};SERVER={SERVER};DATABASE={INTRANET_DB};UID={USERNAME};PWD={PASSWORD}"
 def get_intranet_db_connection():
     return pyodbc.connect(intranet_connection_string)
 
@@ -101,7 +113,7 @@ def get_cardapio(data: str):
         cursor = conn.cursor()
         # Formata para YYYYMMDD para o SQL Server não confundir o mês com o dia
         safe_date = data.replace("-", "")
-        cursor.execute("SELECT id, DataCadastro, Mistura, Restaurante, Acompanhamento FROM dbo.CARDAPIO WHERE DataCadastro = ?", (safe_date,))
+        cursor.execute("SELECT id, DataCadastro, Mistura, Restaurante, Acompanhamento FROM dbo.CARDAPIO WHERE CAST(DataCadastro AS DATE) = CAST(? AS DATE)", (safe_date,))
         rows = cursor.fetchall()
         conn.close()
     except Exception as e:

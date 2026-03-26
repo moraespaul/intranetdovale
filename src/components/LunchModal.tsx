@@ -34,6 +34,8 @@ const defaultRestaurantes: RestauranteMenu[] = [
   { id: "2", nome: "Restaurante 2", misturas: [], acompanhamentos: [], tamanhos: [] }
 ];
 
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`;
+
 const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
   const queryClient = useQueryClient();
   
@@ -68,7 +70,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     queryKey: ["cardapio", today],
     queryFn: async () => {
       // Busca o cardápio da nova API em Python
-      const response = await fetch(`/api/Cardapio?data=${today}`);
+      const response = await fetch(`${API_BASE_URL}/api/Cardapio?data=${today}`);
       if (!response.ok) return null;
       
       const data = await response.json();
@@ -80,7 +82,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     queryKey: ["historico_pedidos", loggedUser?.nome],
     queryFn: async () => {
       if (!loggedUser?.nome) return [];
-      const response = await fetch(`/api/HistoricoPedidos?usuario=${encodeURIComponent(loggedUser.nome)}`);
+      const response = await fetch(`${API_BASE_URL}/api/HistoricoPedidos?usuario=${encodeURIComponent(loggedUser.nome)}`);
       if (!response.ok) return [];
       return await response.json();
     },
@@ -225,7 +227,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
         force: isForce
       };
 
-      const response = await fetch(`/api/SolicitarAlmoco`, {
+      const response = await fetch(`${API_BASE_URL}/api/SolicitarAlmoco`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)

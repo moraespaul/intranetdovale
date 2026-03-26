@@ -3,11 +3,13 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`;
+
 const NewsFeed = () => {
   const { data: newsData = [], isLoading } = useQuery({
     queryKey: ["noticias"],
     queryFn: async () => {
-      const response = await fetch(`/api/Noticias`);
+      const response = await fetch(`${API_BASE_URL}/api/Noticias`);
       if (!response.ok) return [];
       return await response.json();
     }
@@ -32,7 +34,7 @@ const NewsFeed = () => {
           className="bg-card rounded-xl card-shadow overflow-hidden hover:card-shadow-hover transition-shadow animate-fade-in"
         >
             {news.Imagem && (
-              <img src={news.Imagem} alt={news.Titulo} className="w-full h-48 object-contain bg-secondary/30" loading="lazy" />
+              <img src={news.Imagem.startsWith('http') ? news.Imagem : `${API_BASE_URL}${news.Imagem}`} alt={news.Titulo} className="w-full h-48 object-contain bg-secondary/30" loading="lazy" />
             )}
           <div className="p-5">
             <h3 className="font-bold text-foreground text-base mb-2 leading-tight">
@@ -73,7 +75,7 @@ const NewsFeed = () => {
               <X className="h-5 w-5" />
             </button>
             {selectedPost.Imagem && (
-              <img src={selectedPost.Imagem} alt={selectedPost.Titulo} className="w-full h-64 sm:h-80 object-cover" />
+              <img src={selectedPost.Imagem.startsWith('http') ? selectedPost.Imagem : `${API_BASE_URL}${selectedPost.Imagem}`} alt={selectedPost.Titulo} className="w-full h-64 sm:h-80 object-cover" />
             )}
             <div className="p-6 sm:p-8">
               <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-4 leading-tight">{selectedPost.Titulo}</h2>
@@ -94,7 +96,7 @@ const NewsFeed = () => {
                   </h3>
                   <div className="flex flex-wrap gap-3">
                     {selectedPost.Anexos.map((anexo: any, idx: number) => (
-                      <a key={idx} href={anexo.url || anexo.conteudo} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-secondary text-sm px-4 py-2.5 rounded-lg hover:bg-secondary/80 hover:shadow-md transition-all border border-border text-foreground font-medium">
+                      <a key={idx} href={(anexo.url || anexo.conteudo).startsWith('http') ? (anexo.url || anexo.conteudo) : `${API_BASE_URL}${anexo.url || anexo.conteudo}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-secondary text-sm px-4 py-2.5 rounded-lg hover:bg-secondary/80 hover:shadow-md transition-all border border-border text-foreground font-medium">
                         <Download className="h-4 w-4 text-orange" />
                         {anexo.nome}
                       </a>
