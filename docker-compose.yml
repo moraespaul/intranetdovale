@@ -23,8 +23,8 @@ services:
         VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY}
         VITE_SUPABASE_PROJECT_ID: ${VITE_SUPABASE_PROJECT_ID}
     restart: unless-stopped
-    ports:
-      - "${PORT:-80}:80"
+    expose:
+      - "80"
     depends_on:
       backend:
         condition: service_healthy
