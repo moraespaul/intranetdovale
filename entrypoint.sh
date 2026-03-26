@@ -1,9 +1,15 @@
 #!/bin/sh
 
-# Inicializa noticias.json no volume se não existir
-if [ ! -f /app/data/noticias.json ]; then
+# Inicializa noticias.json se não existir ou estiver vazio/corrompido
+if [ ! -s /app/data/noticias.json ]; then
     echo "Inicializando noticias.json..."
     cp /app/data_init/noticias.json /app/data/noticias.json
+fi
+
+# Corrige URLs absolutas de localhost que ficaram de instalações anteriores
+if grep -q "http://localhost" /app/data/noticias.json 2>/dev/null; then
+    echo "Corrigindo URLs absolutas no noticias.json..."
+    sed -i 's|http://localhost:[0-9]*/uploads/|/uploads/|g' /app/data/noticias.json
 fi
 
 # Copia uploads iniciais para o volume (não sobrescreve existentes)
