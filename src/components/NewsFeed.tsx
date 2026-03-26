@@ -39,7 +39,7 @@ const NewsFeed = () => {
                 {news.Titulo}
             </h3>
             <div 
-              className="text-muted-foreground text-sm mb-4 leading-relaxed line-clamp-3 prose-styles"
+              className="text-muted-foreground text-sm mb-4 leading-relaxed line-clamp-3 prose prose-sm max-w-none"
               dangerouslySetInnerHTML={{ __html: news.Resumo }} 
             />
             <div className="flex items-center justify-between">
@@ -82,7 +82,7 @@ const NewsFeed = () => {
                 <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /> {selectedPost.DataPublicacao}</span>
               </div>
               <div 
-                className="prose-styles text-foreground leading-relaxed"
+                className="prose prose-sm max-w-none text-foreground leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: selectedPost.Resumo }} 
               />
               
