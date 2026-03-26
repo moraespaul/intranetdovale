@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# Inicializa noticias.json no volume se não existir
-if [ ! -f /app/data/noticias.json ]; then
+# Inicializa noticias.json se não existir ou estiver vazio/corrompido
+if [ ! -s /app/data/noticias.json ]; then
     echo "Inicializando noticias.json..."
     cp /app/data_init/noticias.json /app/data/noticias.json
 fi
