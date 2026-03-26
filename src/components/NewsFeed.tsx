@@ -7,7 +7,7 @@ const NewsFeed = () => {
   const { data: newsData = [], isLoading } = useQuery({
     queryKey: ["noticias"],
     queryFn: async () => {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/Noticias`);
+      const response = await fetch(`/api/Noticias`);
       if (!response.ok) return [];
       return await response.json();
     }
