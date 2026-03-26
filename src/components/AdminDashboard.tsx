@@ -86,7 +86,7 @@ const AdminDashboard = () => {
   const { data: cardapio } = useQuery({
     queryKey: ["cardapio", today],
     queryFn: async () => {
-      const response = await fetch(`http://localhost:8000/api/Cardapio?data=${today}`);
+      const response = await fetch(`/api/Cardapio?data=${today}`);
       if (!response.ok) return null;
       return await response.json();
     },
@@ -96,7 +96,7 @@ const AdminDashboard = () => {
   const { data: pedidos = [], isLoading: loadingPedidos } = useQuery({
     queryKey: ["pedidos_almoco", today],
     queryFn: async () => {
-      const response = await fetch(`http://localhost:8000/api/SolicitarAlmoco?data=${today}`);
+      const response = await fetch(`/api/SolicitarAlmoco?data=${today}`);
       if (!response.ok) return [];
       return await response.json();
     },
@@ -106,7 +106,7 @@ const AdminDashboard = () => {
   const { data: noticias = [] } = useQuery({
     queryKey: ["noticias"],
     queryFn: async () => {
-      const response = await fetch("http://localhost:8000/api/Noticias");
+      const response = await fetch(`/api/Noticias`);
       if (!response.ok) return [];
       return await response.json();
     }
@@ -134,7 +134,7 @@ const AdminDashboard = () => {
   // Salvar Cardápio
   const saveCardapio = useMutation({
     mutationFn: async () => {
-      const response = await fetch("http://localhost:8000/api/Cardapio", {
+      const response = await fetch(`/api/Cardapio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: today, restaurantes })
@@ -160,8 +160,8 @@ const AdminDashboard = () => {
       
       const method = editingPostId ? "PUT" : "POST";
       const url = editingPostId 
-        ? `http://localhost:8000/api/Noticias/${editingPostId}` 
-        : "http://localhost:8000/api/Noticias";
+        ? `/api/Noticias/${editingPostId}` 
+        : `/api/Noticias`;
 
       const response = await fetch(url, {
         method,
@@ -191,7 +191,7 @@ const AdminDashboard = () => {
   // Excluir Notícia
   const deleteNoticia = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`http://localhost:8000/api/Noticias/${id}`, { method: "DELETE" });
+      const response = await fetch(`/api/Noticias/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Erro ao excluir a notícia.");
     },
     onSuccess: () => {
@@ -505,7 +505,7 @@ const AdminDashboard = () => {
         formData.append('restaurante', nomeRestaurante);
         formData.append('data', todayStr);
 
-        const response = await fetch('http://localhost:8000/api/EnviarWhatsApp', {
+        const response = await fetch(`/api/EnviarWhatsApp`, {
           method: 'POST',
           body: formData,
         });

@@ -68,7 +68,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     queryKey: ["cardapio", today],
     queryFn: async () => {
       // Busca o cardápio da nova API em Python
-      const response = await fetch(`http://localhost:8000/api/Cardapio?data=${today}`);
+      const response = await fetch(`/api/Cardapio?data=${today}`);
       if (!response.ok) return null;
       
       const data = await response.json();
@@ -80,7 +80,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     queryKey: ["historico_pedidos", loggedUser?.nome],
     queryFn: async () => {
       if (!loggedUser?.nome) return [];
-      const response = await fetch(`http://localhost:8000/api/HistoricoPedidos?usuario=${encodeURIComponent(loggedUser.nome)}`);
+      const response = await fetch(`/api/HistoricoPedidos?usuario=${encodeURIComponent(loggedUser.nome)}`);
       if (!response.ok) return [];
       return await response.json();
     },
@@ -225,7 +225,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
         force: isForce
       };
 
-      const response = await fetch("http://localhost:8000/api/SolicitarAlmoco", {
+      const response = await fetch(`/api/SolicitarAlmoco`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
