@@ -56,6 +56,12 @@ connection_string = f"DRIVER={{SQL Server Native Client 11.0}};SERVER={SERVER};D
 def get_db_connection():
     return pyodbc.connect(connection_string)
 
+# Conexão específica para o banco da INTRANET
+INTRANET_DB = 'INTRANET'
+intranet_connection_string = f"DRIVER={{SQL Server Native Client 11.0}};SERVER={SERVER};DATABASE={INTRANET_DB};UID={USERNAME};PWD={PASSWORD}"
+def get_intranet_db_connection():
+    return pyodbc.connect(intranet_connection_string)
+
 # === MODELOS DE DADOS (Pydantic) ===
 class CardapioRequest(BaseModel):
     data: str
@@ -81,6 +87,11 @@ class NoticiaRequest(BaseModel):
     imagem: str
     data_publicacao: Optional[str] = None
     anexos: Optional[List[Any]] = None
+
+class AniversarianteRequest(BaseModel):
+    Funcionario: str
+    Setor: str
+    DataNascimento: str # YYYY-MM-DD
 
 # === ROTAS ===
 @app.get("/api/Cardapio")
@@ -139,6 +150,61 @@ def get_cardapio(data: str):
         "data": str(rows[0][1]) if rows[0][1] else data,
         "restaurantes": restaurantes_list
     }
+
+@app.get("/api/Aniversariantes")
+def get_aniversariantes():
+    try:
+        conn = get_intranet_db_connection()
+        cursor = conn.cursor()
+        # Busca apenas os aniversariantes do mês atual e ordena pelo dia
+        cursor.execute("""
+            SELECT Id, Funcionario, Setor, DataNascimento 
+            FROM dbo.ANIVERSARIANTES
+            WHERE MONTH(DataNascimento) = MONTH(GETDATE())
+            ORDER BY DAY(DataNascimento), Funcionario
+        """)
+        
+        aniversariantes = []
+        for row in cursor.fetchall():
+            data_nasc = row[3]
+            aniversariantes.append({
+                "id": str(row[0]),
+                "nome": row[1].strip() if row[1] else "Sem Nome",
+                "depto": row[2].strip() if row[2] else "Geral",
+                "data": data_nasc.strftime("%d/%m") if data_nasc else "",
+                "dia": data_nasc.day if data_nasc else 0
+            })
+        conn.close()
+        return aniversariantes
+    except Exception as e:
+        print(f"Erro de conexão/SQL (GET Aniversariantes): {e}")
+        return []
+
+@app.get("/api/Aniversariantes/all")
+def get_all_aniversariantes():
+    try:
+        conn = get_intranet_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT Id, Funcionario, Setor, DataNascimento 
+            FROM dbo.ANIVERSARIANTES
+            ORDER BY Funcionario
+        """)
+        
+        aniversariantes = []
+        for row in cursor.fetchall():
+            data_nasc = row[3]
+            aniversariantes.append({
+                "Id": row[0],
+                "Funcionario": row[1].strip() if row[1] else "Sem Nome",
+                "Setor": row[2].strip() if row[2] else "Geral",
+                "DataNascimento": data_nasc.strftime("%Y-%m-%d") if data_nasc else "",
+            })
+        conn.close()
+        return aniversariantes
+    except Exception as e:
+        print(f"Erro de conexão/SQL (GET Aniversariantes/all): {e}")
+        return []
 
 @app.post("/api/Cardapio")
 def save_cardapio(payload: CardapioRequest):
@@ -436,6 +502,61 @@ def delete_noticia(noticia_id: str):
     except Exception as e:
         print(f"Erro ao excluir: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/Aniversariantes")
+def create_aniversariante(payload: AniversarianteRequest):
+    try:
+        conn = get_intranet_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO dbo.ANIVERSARIANTES (Funcionario, Setor, DataNascimento)
+            VALUES (?, ?, ?)
+        """, (payload.Funcionario, payload.Setor, payload.DataNascimento))
+        conn.commit()
+        conn.close()
+        return {"message": "Aniversariante cadastrado com sucesso!"}
+    except Exception as e:
+        print(f"Erro de conexão/SQL (POST Aniversariantes): {e}")
+        raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
+
+@app.put("/api/Aniversariantes/{aniversariante_id}")
+def update_aniversariante(aniversariante_id: int, payload: AniversarianteRequest):
+    try:
+        conn = get_intranet_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE dbo.ANIVERSARIANTES
+            SET Funcionario = ?, Setor = ?, DataNascimento = ?
+            WHERE Id = ?
+        """, (payload.Funcionario, payload.Setor, payload.DataNascimento, aniversariante_id))
+        conn.commit()
+        conn.close()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Aniversariante não encontrado.")
+        return {"message": "Aniversariante atualizado com sucesso!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Erro de conexão/SQL (PUT Aniversariantes): {e}")
+        raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
+
+@app.delete("/api/Aniversariantes/{aniversariante_id}")
+def delete_aniversariante(aniversariante_id: int):
+    try:
+        conn = get_intranet_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM dbo.ANIVERSARIANTES WHERE Id = ?", (aniversariante_id,))
+        conn.commit()
+        conn.close()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Aniversariante não encontrado.")
+        return {"message": "Aniversariante excluído com sucesso!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Erro de conexão/SQL (DELETE Aniversariantes): {e}")
+        raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
+
 @app.get("/api/WhatsAppRestaurantes")
 def get_whatsapp_restaurantes():
     return {"restaurantes": list(WHATSAPP_DESTINATARIOS.keys())}

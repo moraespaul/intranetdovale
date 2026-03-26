@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChefHat, ListOrdered, Newspaper, Plus, X, Lock, LogOut, Download, MessageCircle, Info, Paperclip } from "lucide-react";
+import { ChefHat, ListOrdered, Newspaper, Plus, X, Lock, LogOut, Download, MessageCircle, Info, Paperclip, Cake, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -28,13 +28,20 @@ interface RestauranteMenu {
   tamanhos: Tamanho[];
 }
 
+interface AniversarianteAdmin {
+  Id: number;
+  Funcionario: string;
+  Setor: string;
+  DataNascimento: string; // YYYY-MM-DD
+}
+
 const defaultRestaurantes: RestauranteMenu[] = [
   { id: "1", nome: "Restaurante 1", misturas: [], acompanhamentos: [], tamanhos: [] },
   { id: "2", nome: "Restaurante 2", misturas: [], acompanhamentos: [], tamanhos: [] }
 ];
 
 const AdminDashboard = () => {
-  const [activeTab, setActiveTab] = useState<"cardapio" | "pedidos" | "posts">("pedidos");
+  const [activeTab, setActiveTab] = useState<"cardapio" | "pedidos" | "posts" | "aniversariantes">("pedidos");
   const queryClient = useQueryClient();
   
   // Gera a data atual no fuso horário local (YYYY-MM-DD) garantindo que nunca "pule" de dia antes da meia-noite local
@@ -66,6 +73,15 @@ const AdminDashboard = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [postToDeleteId, setPostToDeleteId] = useState<string | null>(null);
 
+  // --- Estados de Aniversariantes ---
+  const [editingAniversarianteId, setEditingAniversarianteId] = useState<number | null>(null);
+  const [nomeFuncionario, setNomeFuncionario] = useState("");
+  const [setorFuncionario, setSetorFuncionario] = useState("");
+  const [dataNascimento, setDataNascimento] = useState("");
+  const [showDeleteAniversarianteConfirm, setShowDeleteAniversarianteConfirm] = useState(false);
+  const [aniversarianteToDeleteId, setAniversarianteToDeleteId] = useState<number | null>(null);
+  const [buscaAniversariante, setBuscaAniversariante] = useState("");
+
   // Buscando Cardápio de Hoje
   const { data: cardapio } = useQuery({
     queryKey: ["cardapio", today],
@@ -94,6 +110,17 @@ const AdminDashboard = () => {
       if (!response.ok) return [];
       return await response.json();
     }
+  });
+
+  // Buscando TODOS os Aniversariantes (para o painel de admin)
+  const { data: aniversariantes = [], isLoading: loadingAniversariantes } = useQuery<AniversarianteAdmin[]>({
+    queryKey: ["aniversariantes_all"],
+    queryFn: async () => {
+      const response = await fetch("http://localhost:8000/api/Aniversariantes/all");
+      if (!response.ok) return [];
+      return await response.json();
+    },
+    enabled: !!loggedAdmin, // Apenas busca se o admin estiver logado
   });
 
   useEffect(() => {
@@ -179,6 +206,65 @@ const AdminDashboard = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
+  // Salvar/Atualizar Aniversariante
+  const saveAniversariante = useMutation({
+    mutationFn: async () => {
+      if (!nomeFuncionario.trim() || !setorFuncionario.trim() || !dataNascimento) {
+        throw new Error("Todos os campos são obrigatórios.");
+      }
+      
+      const method = editingAniversarianteId ? "PUT" : "POST";
+      const url = editingAniversarianteId 
+        ? `http://localhost:8000/api/Aniversariantes/${editingAniversarianteId}` 
+        : "http://localhost:8000/api/Aniversariantes";
+
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Funcionario: nomeFuncionario,
+          Setor: setorFuncionario,
+          DataNascimento: dataNascimento,
+        })
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || "Erro ao salvar aniversariante.");
+      }
+    },
+    onSuccess: () => {
+      toast.success(editingAniversarianteId ? "Cadastro atualizado com sucesso!" : "Aniversariante cadastrado com sucesso!");
+      cancelEditAniversariante();
+      queryClient.invalidateQueries({ queryKey: ["aniversariantes_all"] });
+      queryClient.invalidateQueries({ queryKey: ["aniversariantes"] }); // Invalida os dados do widget também
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Excluir Aniversariante
+  const deleteAniversariante = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`http://localhost:8000/api/Aniversariantes/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || "Erro ao excluir aniversariante.");
+      }
+    },
+    onSuccess: () => {
+      toast.success("Cadastro excluído com sucesso!");
+      if (editingAniversarianteId === aniversarianteToDeleteId) {
+        cancelEditAniversariante();
+      }
+      setAniversarianteToDeleteId(null);
+      queryClient.invalidateQueries({ queryKey: ["aniversariantes_all"] });
+      queryClient.invalidateQueries({ queryKey: ["aniversariantes"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+
+  // --- Funções Auxiliares ---
+
   const handleEditNoticia = (n: any) => {
     setEditingPostId(n.Id || n.id);
     setTituloNoticia(n.Titulo || n.titulo);
@@ -199,6 +285,21 @@ const AdminDashboard = () => {
     setResumoNoticia("");
     setImagemNoticia("");
     setAnexosNoticia([]);
+  };
+
+  const handleEditAniversariante = (a: AniversarianteAdmin) => {
+    setEditingAniversarianteId(a.Id);
+    setNomeFuncionario(a.Funcionario);
+    setSetorFuncionario(a.Setor);
+    setDataNascimento(a.DataNascimento);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEditAniversariante = () => {
+    setEditingAniversarianteId(null);
+    setNomeFuncionario("");
+    setSetorFuncionario("");
+    setDataNascimento("");
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -224,6 +325,11 @@ const AdminDashboard = () => {
 
   const removeAnexo = (index: number) => {
     setAnexosNoticia(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDeleteAniversarianteRequest = (id: number) => {
+    setAniversarianteToDeleteId(id);
+    setShowDeleteAniversarianteConfirm(true);
   };
 
   // Helpers do Cardápio
@@ -472,6 +578,11 @@ const AdminDashboard = () => {
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:border-orange focus:outline-none transition-colors";
 
+  const aniversariantesFiltrados = aniversariantes.filter((a: AniversarianteAdmin) => {
+    const termo = buscaAniversariante.toLowerCase();
+    return a.Funcionario.toLowerCase().includes(termo) || a.Setor.toLowerCase().includes(termo);
+  });
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-10">
       <div className="bg-navy px-6 py-4 rounded-xl shadow-lg flex items-center justify-between">
@@ -554,6 +665,16 @@ const AdminDashboard = () => {
             }`}
           >
             <Newspaper className="h-4 w-4" /> Publicar Notícias
+          </button>
+        )}
+        {!["RECEPCAO", "RECEPÇÃO"].includes(loggedAdmin.department.toUpperCase()) && (
+          <button
+            onClick={() => setActiveTab("aniversariantes")}
+            className={`flex-1 min-w-[150px] py-2.5 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
+              activeTab === "aniversariantes" ? "bg-orange text-white shadow-md" : "text-muted-foreground hover:bg-secondary"
+            }`}
+          >
+            <Cake className="h-4 w-4" /> Cadastrar Aniversariantes
           </button>
         )}
       </div>
@@ -797,8 +918,130 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* CONTEÚDO: ANIVERSARIANTES */}
+      {activeTab === "aniversariantes" && !["RECEPCAO", "RECEPÇÃO"].includes(loggedAdmin.department.toUpperCase()) && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-card border border-border rounded-xl p-5 card-shadow space-y-5">
+            <div className="flex items-center gap-2 mb-2">
+              <Cake className="h-5 w-5 text-orange" />
+              <h2 className="text-lg font-bold">{editingAniversarianteId ? "Editar Cadastro" : "Cadastrar Novo Aniversariante"}</h2>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Nome do Funcionário</label>
+                <input type="text" value={nomeFuncionario} onChange={e => setNomeFuncionario(e.target.value)} className={inputClass} placeholder="Nome completo..." />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Setor</label>
+                <input type="text" value={setorFuncionario} onChange={e => setSetorFuncionario(e.target.value)} className={inputClass} placeholder="Setor do funcionário..." />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-foreground uppercase block mb-1.5">Data de Nascimento</label>
+                <input type="date" value={dataNascimento} onChange={e => setDataNascimento(e.target.value)} className={inputClass} />
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-2">
+              {editingAniversarianteId && (
+                <Button variant="outline" className="w-full" onClick={cancelEditAniversariante}>Cancelar Edição</Button>
+              )}
+              <Button variant="accent" className="w-full" onClick={() => saveAniversariante.mutate()} disabled={saveAniversariante.isPending}>
+                {saveAniversariante.isPending ? "Salvando..." : (editingAniversarianteId ? "Atualizar Cadastro" : "Salvar Cadastro")}
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-5 card-shadow space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h2 className="text-lg font-bold">Aniversariantes Cadastrados</h2>
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome ou setor..."
+                  value={buscaAniversariante}
+                  onChange={(e) => setBuscaAniversariante(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border border-input bg-background text-sm focus:border-orange focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+            <div className="space-y-3">
+              {loadingAniversariantes ? (
+                <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-orange" /></div>
+              ) : aniversariantesFiltrados.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum aniversariante encontrado.</p>
+              ) : (
+                aniversariantesFiltrados.map((a: AniversarianteAdmin) => (
+                  <div key={a.Id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-secondary/50 p-3 rounded-lg border border-border gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-orange/10 flex items-center justify-center text-orange">
+                        <Cake className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-sm line-clamp-1">{a.Funcionario}</h4>
+                        {/* Tratamento 'T12:00:00' garante que o fuso horário não atrase um dia da data de nascimento */}
+                        <p className="text-xs text-muted-foreground">{a.Setor} - {new Date(a.DataNascimento + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 sm:shrink-0">
+                      <Button variant="outline" size="sm" onClick={() => handleEditAniversariante(a)}>Editar</Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDeleteAniversarianteRequest(a.Id)}>Excluir</Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
+
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão de Notícia */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              Confirmar Exclusão
+            </DialogTitle>
+            <DialogDescription className="text-base text-foreground mt-4 leading-relaxed">
+              Tem certeza que deseja excluir esta notícia?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end mt-6">
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => { if (postToDeleteId) deleteNoticia.mutate(postToDeleteId); setShowDeleteConfirm(false); }} disabled={deleteNoticia.isPending}>
+              {deleteNoticia.isPending ? "Excluindo..." : "Sim, excluir"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Exclusão de Aniversariante */}
+      <Dialog open={showDeleteAniversarianteConfirm} onOpenChange={setShowDeleteAniversarianteConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              Confirmar Exclusão
+            </DialogTitle>
+            <DialogDescription className="text-base text-foreground mt-4 leading-relaxed">
+              Tem certeza que deseja excluir este cadastro de aniversariante?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end mt-6">
+            <Button variant="outline" onClick={() => setShowDeleteAniversarianteConfirm(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => { if (aniversarianteToDeleteId) deleteAniversariante.mutate(aniversarianteToDeleteId); setShowDeleteAniversarianteConfirm(false); }} disabled={deleteAniversariante.isPending}>
+              {deleteAniversariante.isPending ? "Excluindo..." : "Sim, excluir"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 };
