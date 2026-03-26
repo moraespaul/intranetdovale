@@ -34,7 +34,7 @@ const defaultRestaurantes: RestauranteMenu[] = [
   { id: "2", nome: "Restaurante 2", misturas: [], acompanhamentos: [], tamanhos: [] }
 ];
 
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:8000' : `http://${window.location.hostname}:8001`;
+const API_BASE_URL = '';
 
 const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
   const queryClient = useQueryClient();

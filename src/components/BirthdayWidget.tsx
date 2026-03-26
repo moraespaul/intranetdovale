@@ -9,7 +9,7 @@ interface Aniversariante {
   dia: number;
 }
 
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:8000' : `http://${window.location.hostname}:8001`;
+const API_BASE_URL = '';
 
 const BirthdayWidget = () => {
   const { data: birthdays = [], isLoading } = useQuery<Aniversariante[]>({
