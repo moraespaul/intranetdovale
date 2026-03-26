@@ -6,6 +6,12 @@ if [ ! -s /app/data/noticias.json ]; then
     cp /app/data_init/noticias.json /app/data/noticias.json
 fi
 
+# Corrige URLs absolutas de localhost que ficaram de instalações anteriores
+if grep -q "http://localhost" /app/data/noticias.json 2>/dev/null; then
+    echo "Corrigindo URLs absolutas no noticias.json..."
+    sed -i 's|http://localhost:[0-9]*/uploads/|/uploads/|g' /app/data/noticias.json
+fi
+
 # Copia uploads iniciais para o volume (não sobrescreve existentes)
 if [ -d /app/uploads_init ]; then
     cp -n /app/uploads_init/* /app/uploads/ 2>/dev/null || true
