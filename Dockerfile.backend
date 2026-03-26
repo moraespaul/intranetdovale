@@ -30,10 +30,15 @@ RUN pip install --no-cache-dir \
 # Copia o backend
 COPY src/components/main.py ./main.py
 
-# Cria diretórios e copia noticias.json inicial para /app/data/
-RUN mkdir -p uploads data
-COPY src/components/noticias.json ./data/noticias.json
+# Copia arquivos iniciais para diretórios separados (não sobrescritos pelo volume)
+RUN mkdir -p uploads data data_init uploads_init
+COPY src/components/noticias.json ./data_init/noticias.json
+COPY src/components/uploads/ ./uploads_init/
+
+# Entrypoint que inicializa volumes na primeira execução
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./entrypoint.sh"]
