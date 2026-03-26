@@ -29,9 +29,9 @@ UPLOAD_DIR = "uploads"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-NEWS_FILE = "noticias.json"
+NEWS_FILE = "data/noticias.json"
 
-# Permite que o frontend acesse a pasta /uploads via URL (ex: http://192.168.10.39:8000/uploads/imagem.png)
+# Permite que o frontend acesse a pasta /uploads via URL (ex: /uploads/imagem.png)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
@@ -51,7 +51,7 @@ DATABASE = 'SOLICITAR_ALMOCO'
 USERNAME = 'sa'
 PASSWORD = 'Elavod@2018@'
 
-connection_string = f"DRIVER={{SQL Server Native Client 11.0}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}"
+connection_string = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}"
 
 def get_db_connection():
     return pyodbc.connect(connection_string)
@@ -322,7 +322,7 @@ def save_noticia(payload: NoticiaRequest):
                     f.write(base64.b64decode(encoded))
                 
                 # Salva no banco APENAS o link do arquivo para o banco ficar leve
-                caminho_imagem = f"http://192.168.10.39:8000/uploads/{nome_arquivo}"
+                caminho_imagem = f"/uploads/{nome_arquivo}"
             else:
                 caminho_imagem = payload.imagem
                 
@@ -338,7 +338,7 @@ def save_noticia(payload: NoticiaRequest):
                     caminho_fisico = os.path.join(UPLOAD_DIR, nome_arquivo)
                     with open(caminho_fisico, "wb") as f:
                         f.write(base64.b64decode(encoded))
-                    anexos_salvos.append({"nome": safe_nome, "url": f"http://192.168.10.39:8000/uploads/{nome_arquivo}"})
+                    anexos_salvos.append({"nome": safe_nome, "url": f"/uploads/{nome_arquivo}"})
                 else:
                     anexos_salvos.append(anexo)
 
@@ -393,7 +393,7 @@ def update_noticia(noticia_id: str, payload: NoticiaRequest):
                     caminho_fisico = os.path.join(UPLOAD_DIR, nome_arquivo)
                     with open(caminho_fisico, "wb") as f:
                         f.write(base64.b64decode(encoded))
-                    noticia["Imagem"] = f"http://192.168.10.39:8000/uploads/{nome_arquivo}"
+                    noticia["Imagem"] = f"/uploads/{nome_arquivo}"
                 elif payload.imagem:
                     noticia["Imagem"] = payload.imagem
                 
@@ -408,7 +408,7 @@ def update_noticia(noticia_id: str, payload: NoticiaRequest):
                             caminho_fisico = os.path.join(UPLOAD_DIR, nome_arquivo)
                             with open(caminho_fisico, "wb") as f:
                                 f.write(base64.b64decode(encoded))
-                            anexos_salvos.append({"nome": safe_nome, "url": f"http://192.168.10.39:8000/uploads/{nome_arquivo}"})
+                            anexos_salvos.append({"nome": safe_nome, "url": f"/uploads/{nome_arquivo}"})
                         else:
                             anexos_salvos.append(anexo)
                 noticia["Anexos"] = anexos_salvos
