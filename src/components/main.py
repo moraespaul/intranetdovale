@@ -63,14 +63,14 @@ elif 'SQL Server Native Client 11.0' in installed_drivers:
 else:
     SQL_DRIVER = '{SQL Server Native Client 11.0}' # Fallback de segurança
 
-connection_string = f"DRIVER={SQL_DRIVER};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}"
+connection_string = f"DRIVER={SQL_DRIVER};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD};TrustServerCertificate=yes;Encrypt=no;"
 
 def get_db_connection():
     return pyodbc.connect(connection_string)
 
 # Conexão específica para o banco da INTRANET
 INTRANET_DB = 'INTRANET'
-intranet_connection_string = f"DRIVER={SQL_DRIVER};SERVER={SERVER};DATABASE={INTRANET_DB};UID={USERNAME};PWD={PASSWORD}"
+intranet_connection_string = f"DRIVER={SQL_DRIVER};SERVER={SERVER};DATABASE={INTRANET_DB};UID={USERNAME};PWD={PASSWORD};TrustServerCertificate=yes;Encrypt=no;"
 def get_intranet_db_connection():
     return pyodbc.connect(intranet_connection_string)
 
