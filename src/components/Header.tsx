@@ -7,6 +7,7 @@ interface HeaderProps {
   onTabChange: (tab: string) => void;
 }
 
+
 const navItems = [
   { id: "principal", label: "Principal" },
   { id: "informativos", label: "Informativos" },
