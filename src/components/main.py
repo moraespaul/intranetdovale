@@ -367,6 +367,28 @@ def save_pedido(payload: PedidoRequest):
         print(f"Erro de conexão/SQL (POST SolicitarAlmoco): {e}")
         raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
 
+@app.put("/api/SolicitarAlmoco/{pedido_id}/cancelar")
+def cancelar_pedido(pedido_id: int):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE dbo.SOLICITAR_ALMOCO 
+            SET StatusPedido = 'Cancelado' 
+            WHERE Id = ?
+        """, (pedido_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Pedido não encontrado.")
+        conn.close()
+        return {"message": "Pedido cancelado com sucesso!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Erro de conexão/SQL (PUT Cancelar Pedido): {e}")
+        raise HTTPException(status_code=500, detail=f"Erro BD: {str(e)}")
+
 @app.get("/api/Noticias")
 def get_noticias():
     try:

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { UtensilsCrossed, X, Info, Lock, LogOut, CheckCircle } from "lucide-react";
+import { UtensilsCrossed, X, Info, Lock, LogOut, CheckCircle, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -58,9 +58,11 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
   const [observacoes, setObservacoes] = useState("");
   const [showConfirmPopup, setShowConfirmPopup] = useState(false);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [showCancelPopup, setShowCancelPopup] = useState(false);
+  const [pedidoToCancelId, setPedidoToCancelId] = useState<number | null>(null);
 
   // --- Navigation & History state ---
-  const [activeView, setActiveView] = useState<"pedido" | "historico">("pedido");
+  const [activeView, setActiveView] = useState<"pedido" | "historico" | "cancelar">("pedido");
   const [filtroMes, setFiltroMes] = useState("");
   const [filtroDia, setFiltroDia] = useState("");
 
@@ -99,6 +101,8 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
       setObservacoes("");
       setShowConfirmPopup(false);
       setShowSuccessPopup(false);
+      setShowCancelPopup(false);
+      setPedidoToCancelId(null);
       setActiveView("pedido");
       setFiltroMes("");
       setFiltroDia("");
@@ -260,6 +264,27 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
     },
   });
 
+  const cancelOrder = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`${API_BASE_URL}/api/SolicitarAlmoco/${id}/cancelar`, { method: "PUT" });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || "Erro ao cancelar pedido.");
+      }
+    },
+    onSuccess: () => {
+      toast.success("Pedido cancelado com sucesso!");
+      // Invalida o histórico para que a lista de cancelamento e o histórico sejam atualizados
+      queryClient.invalidateQueries({ queryKey: ["historico_pedidos"] });
+      queryClient.invalidateQueries({ queryKey: ["pedidos_almoco"] }); // Invalida o relatório do admin também
+      setShowCancelPopup(false);
+      setPedidoToCancelId(null);
+    },
+    onError: (e: Error) => {
+      toast.error(e.message);
+    },
+  });
+
   const inputClass = "w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:border-orange focus:outline-none transition-colors";
   const selectClass = "w-full px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:border-orange focus:outline-none transition-colors appearance-none cursor-pointer";
   const labelClass = "text-xs font-semibold text-foreground uppercase block mb-1.5";
@@ -348,6 +373,9 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                         <div className="flex gap-2 bg-secondary p-1 rounded-lg">
                           <button onClick={() => setActiveView("pedido")} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${activeView === "pedido" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary/80"}`}>
                             Novo Pedido
+                          </button>
+                          <button onClick={() => setActiveView("cancelar")} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${activeView === "cancelar" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary/80"}`}>
+                            Cancelar Pedido
                           </button>
                           <button onClick={() => setActiveView("historico")} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${activeView === "historico" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary/80"}`}>
                             Meu Histórico
@@ -517,7 +545,7 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                               </div>
                             );
                           })()
-                        ) : (
+                        ) : activeView === "historico" ? (
                           <div className="space-y-4 animate-fade-in">
                             {/* Filtros de Histórico */}
                             <div className="flex gap-2">
@@ -575,6 +603,48 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
                               })()}
                             </div>
                           </div>
+                        ) : ( // activeView === "cancelar"
+                          <div className="space-y-4 animate-fade-in">
+                            {(() => {
+                              const pedidosHoje = historico.filter((p: any) => {
+                                if (!p.DataCadastro) return false;
+                                const d = new Date(p.DataCadastro);
+                                const pDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                                return pDate === today && p.StatusPedido !== "Cancelado";
+                              });
+
+                              if (loadingHistorico) return <p className="text-sm text-center text-muted-foreground py-4">Carregando pedidos...</p>;
+                              if (pedidosHoje.length === 0) return <p className="text-base text-center text-muted-foreground py-8 font-medium">Nenhum pedido Realizado Hoje.</p>;
+
+                              return (
+                                <div className="space-y-3 pr-1 max-h-[50vh] overflow-y-auto">
+                                  <p className="text-xs text-muted-foreground mb-3 text-center">Abaixo estão seus pedidos de almoço solicitados hoje. Clique em cancelar se não for consumir.</p>
+                                  {pedidosHoje.map((p: any) => (
+                                    <div key={p.Id} className="bg-secondary/50 p-4 rounded-lg border border-border text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                      <div className="flex-1 min-w-0">
+                                        <p><strong className="text-foreground font-medium">Local:</strong> {p.Restaurante}</p>
+                                        <p><strong className="text-foreground font-medium">Pedido:</strong> {p.Tamanho} - {p.Mistura}</p>
+                                        {p.Acompanhamento && <p><strong className="text-foreground font-medium">Acomps:</strong> {p.Acompanhamento}</p>}
+                                        {p.Obs && <p className="text-destructive font-medium mt-1">Obs: {p.Obs}</p>}
+                                      </div>
+                                      <Button 
+                                        variant="destructive" 
+                                        size="sm" 
+                                        className="gap-2 shrink-0"
+                                        onClick={() => {
+                                          setPedidoToCancelId(p.Id);
+                                          setShowCancelPopup(true);
+                                        }}
+                                      >
+                                        <Ban className="h-4 w-4" />
+                                        Cancelar
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
                         )}
                       </div>
                     )}
@@ -625,6 +695,33 @@ const LunchModal = ({ open, onOpenChange }: LunchModalProps) => {
           <DialogDescription className="text-base text-muted-foreground mt-2">
             Seu almoço foi solicitado com sucesso.
           </DialogDescription>
+        </DialogContent>
+      </Dialog>
+
+      {/* Popup de Confirmação de Cancelamento */}
+      <Dialog open={showCancelPopup} onOpenChange={setShowCancelPopup}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              Confirmar Cancelamento
+            </DialogTitle>
+            <DialogDescription className="text-base text-foreground mt-4 leading-relaxed">
+              Tem certeza que deseja cancelar este pedido de almoço?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end mt-6">
+            <Button variant="outline" onClick={() => setShowCancelPopup(false)}>
+              Voltar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => { if (pedidoToCancelId) cancelOrder.mutate(pedidoToCancelId); }}
+              disabled={cancelOrder.isPending}
+            >
+              {cancelOrder.isPending ? "Cancelando..." : "Sim, cancelar"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>
