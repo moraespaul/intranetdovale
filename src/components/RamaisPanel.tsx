@@ -82,7 +82,10 @@ const RamaisPanel = () => {
         </div>
       </div>
 
-      <div className="divide-y divide-border">
+      {/* Adicionamos uma altura máxima calculada e uma barra de rolagem automática */}
+      <div 
+        className="divide-y divide-border overflow-y-auto max-h-[calc(100vh-14rem)]"
+      >
         {sortedDepts.map((dept) => (
           <div key={dept}>
             <div className="bg-secondary px-4 py-2">
