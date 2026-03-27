@@ -30,7 +30,12 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-NEWS_FILE = os.path.join(BASE_DIR, "data", "noticias.json")
+# Resolve dinamicamente o caminho do arquivo JSON (Local vs Docker/Coolify)
+DATA_DIR = os.path.join(BASE_DIR, "data")
+if os.path.exists(DATA_DIR):
+    NEWS_FILE = os.path.join(DATA_DIR, "noticias.json")
+else:
+    NEWS_FILE = os.path.join(BASE_DIR, "noticias.json")
 
 # Permite que o frontend acesse a pasta /uploads via URL (ex: /uploads/imagem.png)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")

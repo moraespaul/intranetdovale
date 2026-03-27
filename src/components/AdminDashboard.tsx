@@ -40,7 +40,7 @@ const defaultRestaurantes: RestauranteMenu[] = [
   { id: "2", nome: "Restaurante 2", misturas: [], acompanhamentos: [], tamanhos: [] }
 ];
 
-const API_BASE_URL = '';
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:8000' : `http://${window.location.hostname}:8001`;
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<"cardapio" | "pedidos" | "posts" | "aniversariantes">("pedidos");
