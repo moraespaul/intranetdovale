@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     restart: unless-stopped
+    ports:
+      - "8001:8000"
     volumes:
       - backend_uploads:/app/uploads
       - backend_data:/app/data
